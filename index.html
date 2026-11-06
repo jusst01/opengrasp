@@ -861,6 +861,9 @@ function animate(){
       if (penetration() <= penPrev + 1e-6){ ok = true; break; }
     }
     if (!ok){ joints.splice(0, joints.length, ...prev); applyPose(); }
+    // sticky wall: bleed off target windup while blocked, so reversing
+    // direction responds immediately instead of unwinding dead travel
+    for (let i = 0; i < 5; i++) jTarget[i] = joints[i] + (jTarget[i] - joints[i]) * 0.5;
   }
   updateGrasp();
   highlightGrabbable();
