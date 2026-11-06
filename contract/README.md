@@ -39,3 +39,19 @@ BASE_POINTS            = { pick_place: 100, stack_two: 200, colour_sort: 250 }
 Because the failure mode of closed teleoperation platforms is a spreadsheet:
 conversion rates, acceptance decisions, and revenue splits that exist only inside
 the company. Every one of those is a public constant or a public state entry here.
+
+## Implementation status (2026-11-06)
+
+- Source: `src/lib.rs` + `Cargo.toml` (near-sdk 5), written from this design doc
+  and POLICY.md. Constants, method names, and the 70/20/10 split match exactly.
+- NOT yet compiled — the writing VM has no Rust toolchain. Build on a machine
+  with Rust + cargo-near: `cargo near build` (wasm target).
+- Deploy (testnet) still needs Jallu's NEAR testnet account: it is the payout
+  account and the initial `owner` / `treasury` / `ops` argument to `new`
+  (all three can be the same account at first; re-pointing any of them later
+  is an explicit owner call, so the change is public). Deploy command once the
+  account exists:
+  `near deploy <account>.testnet --wasmFile target/near/opengrasp-policy.wasm --initFunction new --initArgs '{"owner":"<account>.testnet","treasury":"<account>.testnet","ops":"<account>.testnet"}'`
+  then verify with `near view <account>.testnet get_policy`.
+- v0 trusts the submitted quality score (see `register_episode`); on-chain
+  recomputation proof is v1, per the design above.

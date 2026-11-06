@@ -17,6 +17,7 @@ or quietly sell. Points are an accounting unit inside the contract, nothing else
 | Colour Sort | 250 | 60 s |
 
 `points = base_points × quality / 100`, paid only for **accepted** episodes.
+Quality and points are each rounded to the nearest integer.
 
 ## Quality formula (deterministic, re-runnable by anyone)
 
@@ -30,6 +31,10 @@ path       = clamp(1 − (tip_path / ideal_path − 1) / 2, 0, 1)
 
 ACCEPTED if quality ≥ 60.
 ```
+
+`mean_jerk` is computed by finite differences over the recorded frame timestamps
+(midpoint times between samples), and `duration` is the last frame's timestamp —
+so the score is exactly reproducible from the exported episode file alone.
 
 The same formula runs in the browser (instant feedback to the player) and is the
 reference for on-chain verification. Same episode file in → same score out.

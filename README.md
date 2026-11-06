@@ -18,7 +18,7 @@ They prove the demand. But their economics are a black box, and the market has n
 
 | | Closed incumbents | OpenGrasp |
 |---|---|---|
-| Points → payout conversion | Undisclosed, off-chain, changeable at will | **Published constants** (see `POLICY.md`), enforced by the NEAR contract |
+| Points → payout conversion | Undisclosed, off-chain, changeable at will | **Published constants** (see `POLICY.md`), to be enforced by the NEAR policy contract — design published in `contract/`, deployment on the roadmap |
 | Native token | Yes — with vesting wallets the community has to sleuth on-chain | **No token at all.** Rewards are paid in NEAR |
 | Dataset licensing revenue | Opaque | **On-chain split: 70% contributors / 20% treasury / 10% ops** |
 | Which demonstrations count? | Undisclosed acceptance | **Open quality formula** (below); acceptance rate is public |
@@ -47,9 +47,11 @@ the rates in a contract and the scoring formula in this repo.
 
 ## NEAR's role
 
-- The **policy contract** (testnet, in `contract/`) holds the conversion rates, the
-  revenue split, and the episode registry as public constants and state — the part of
-  the system players normally have to trust becomes the part they can read.
+- The **policy contract** (design in `contract/`; testnet deployment on the roadmap)
+  will hold the conversion rates, the revenue split, and the episode registry as
+  public constants and state — the part of the system players normally have to trust
+  becomes the part they can read. The design and constants are public now, ahead of
+  deployment, so they can be audited before any value moves.
 - **Episodes as assets:** accepted episodes are registered on-chain; the NEP-171
   episode-asset layer (royalty-bearing ownership of a single demonstration) is the
   next milestone.
@@ -63,9 +65,12 @@ the rates in a contract and the scoring formula in this repo.
   shoulder, `A/D` elbow, `Z/X` wrist pitch, `C/V` wrist roll, `Space` gripper,
   `F` save checkpoint, `G` load checkpoint, `R` reset. Or use the mouse: **drag the
   gripper** and inverse kinematics moves the arm, **double-click a cube** and the arm
-  flies to it. A wrist camera (picture-in-picture, like a real SO-ARM wrist cam),
+  flies to it and grabs it, **double-click the target zone** and it flies there so you
+  can fine-tune the drop. A **Sensitivity** slider (10–300%) scales key speed and drag
+  travel. A wrist camera (picture-in-picture, like a real SO-ARM wrist cam),
   a translucent goal ghost, and a live goal-match percentage keep the target obvious.
-  Joint motion is smoothed, and the gripper cannot pass through the table.
+  Joint motion is smoothed, and a floor guard keeps the gripper and links from
+  passing through the table (12 mm recovery tolerance, documented in the code).
   *Do this — see that:* finish the orange pick-and-place and an episode card appears
   with its quality score, accept/reject verdict, and a downloadable episode file.
 - **Convert an episode to a LeRobot dataset:**
