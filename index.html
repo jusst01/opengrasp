@@ -227,7 +227,7 @@ document.addEventListener('fullscreenchange', () => setTimeout(resize, 120));
 /* ============ ARM (SO-ARM-style, 5 DOF + gripper) ============ */
 const L = [0.35, 0.30, 0.22];
 const LIMITS = [[-2.4,2.4],[-1.35,1.35],[-2.6,2.6],[-2.2,2.2],[-2.6,2.6]];
-const HOME = [0, -0.45, 0.95, -0.5, 0];
+const HOME = [0, 0.9, -0.9, -0.9, 0]; // folded ready pose — every link clear of the table
 const joints  = [...HOME];     // actual (smoothed) pose — this is what gets recorded
 const jTarget = [...HOME];     // commanded pose — keys, sliders, IK write here
 let grip = 1, gripTarget = 1;  // 1 = fully open, 0 = closed
@@ -266,8 +266,8 @@ const gripHit = new THREE.Mesh(new THREE.SphereGeometry(0.10, 10, 10),
   new THREE.MeshBasicMaterial({ transparent:true, opacity:0, depthWrite:false }));
 gripHit.position.set(0.05, 0, 0); gripG.add(gripHit);
 // wrist camera — the same view a real SO-ARM wrist cam gives a teleoperator
-const wristCam = new THREE.PerspectiveCamera(58, 4/3, 0.01, 6);
-wristCam.position.set(-0.03, 0.055, 0); gripG.add(wristCam);
+const wristCam = new THREE.PerspectiveCamera(62, 4/3, 0.01, 6);
+wristCam.position.set(0.0, 0.07, 0); gripG.add(wristCam);
 let wristCamOn = true;
 
 function applyPose(){
@@ -903,7 +903,7 @@ function animateFrame(){
   // wrist-cam picture-in-picture (top-left)
   if (wristCamOn){
     const fwd = new THREE.Vector3(1, 0, 0).applyQuaternion(gripG.getWorldQuaternion(new THREE.Quaternion()));
-    const tgt = tipPos().add(fwd.multiplyScalar(0.30)); tgt.y -= 0.09;
+    const tgt = tipPos().add(fwd.multiplyScalar(0.16)); tgt.y -= 0.15;
     wristCam.lookAt(tgt);
     const pw = Math.min(260, Math.floor(W * 0.34)), ph = Math.floor(pw * 0.75);
     renderer.clearDepth();
