@@ -101,7 +101,9 @@
         <kbd>A</kbd>/<kbd>D</kbd> elbow · <kbd>Z</kbd>/<kbd>X</kbd> wrist pitch · <kbd>C</kbd>/<kbd>V</kbd> wrist roll ·
         <kbd>Space</kbd> gripper · <kbd>F</kbd> save checkpoint · <kbd>G</kbd> load checkpoint · <kbd>R</kbd> reset scene.<br/>
         <b>Mouse:</b> hold &amp; drag the gripper to pull the arm around (inverse kinematics does the rest) ·
-        <b>double-click a cube</b> and the arm flies to it · drag empty space to orbit, scroll to zoom.
+        <b>double-click a cube</b> and the arm flies to it and grabs it ·
+        <b>double-click the target zone</b> and the arm flies there so you can fine-tune the drop ·
+        drag empty space to orbit, scroll to zoom.
         The translucent ghost shows the goal; the bar below tracks how close you are.
         The <b>Sensitivity</b> slider under the view scales key speed and mouse-drag travel
         (and is recorded in the episode metadata, like everything else here).
@@ -324,7 +326,7 @@ function addZone(x, z, w, d, color){
     new THREE.LineBasicMaterial({ color }));
   edge.position.y = 0.001; g.add(edge);
   g.position.set(x, 0.002, z); world.add(g);
-  const zn = { x, z, w, d, color, mesh:g }; zones.push(zn); return zn;
+  const zn = { x, z, w, d, color, mesh:g, fillMesh:fill }; zones.push(zn); return zn;
 }
 function addGhost(x, y, z, color){
   const m = new THREE.Mesh(new THREE.BoxGeometry(CUBE, CUBE, CUBE),
@@ -653,13 +655,28 @@ addEventListener('pointerup', () => { dragging = false; dragAnchor = null; contr
 renderer.domElement.addEventListener('dblclick', e => {
   castFromEvent(e);
   const hits = ray.intersectObjects(cubes.map(c => c.mesh), false);
-  if (!hits.length) return;
-  const cube = cubes.find(c => c.mesh === hits[0].object);
-  const p = cube.mesh.getWorldPosition(new THREE.Vector3());
+  if (hits.length){
+    const cube = cubes.find(c => c.mesh === hits[0].object);
+    const p = cube.mesh.getWorldPosition(new THREE.Vector3());
+    const above = p.clone(); above.y += 0.17;
+    toast('✈ Flying to ' + cube.id + '…');
+    flyTo(above, -1.35, () => flyTo(p.clone().setY(p.y + 0.005), -1.35,
+      () => { gripTarget = 0; toast('✊ Grabbed ' + cube.id + ' — Space lets go'); }));
+    return;
+  }
+  /* double-click the target zone / goal ghost: fly there (roughly is fine —
+     the player fine-tunes the last centimetres and presses Space themselves) */
+  const targets = [];
+  for (const zn of zones) if (zn.fillMesh) targets.push(zn.fillMesh);
+  for (const g of ghosts) targets.push(g);
+  const thits = ray.intersectObjects(targets, false);
+  if (!thits.length) return;
+  const obj = thits[0].object;
+  const zn = zones.find(z => z.fillMesh === obj);
+  const p = zn ? new THREE.Vector3(zn.x, REST_Y, zn.z) : obj.position.clone();
   const above = p.clone(); above.y += 0.17;
-  toast('✈ Flying to ' + cube.id + '…');
-  flyTo(above, -1.35, () => flyTo(p.clone().setY(p.y + 0.005), -1.35,
-    () => { gripTarget = 0; toast('✊ Grabbed ' + cube.id + ' — Space lets go'); }));
+  toast(held ? '✈ Flying to target — Space drops the cube' : '✈ Flying to target…');
+  flyTo(above, -1.35, () => flyTo(p.clone().setY(p.y + 0.01), -1.35, null));
 });
 /* toolbar */
 document.getElementById('expandBtn').addEventListener('click', e => {
