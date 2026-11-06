@@ -59,8 +59,13 @@ the rates in a contract and the scoring formula in this repo.
 ## Try it
 
 - **Play:** open `index.html` (or the GitHub Pages deployment) in any modern browser.
-  Pick a task → **Start Episode** → keys `1/2 3/4 5/6 7/8 9/0` drive the five joints,
-  `Space` toggles the gripper, `R` resets. Sliders work too.
+  Pick a task → **Start Episode**. Controls are gamer-layout: `Q/E` base, `W/S`
+  shoulder, `A/D` elbow, `Z/X` wrist pitch, `C/V` wrist roll, `Space` gripper,
+  `F` save checkpoint, `G` load checkpoint, `R` reset. Or use the mouse: **drag the
+  gripper** and inverse kinematics moves the arm, **double-click a cube** and the arm
+  flies to it. A wrist camera (picture-in-picture, like a real SO-ARM wrist cam),
+  a translucent goal ghost, and a live goal-match percentage keep the target obvious.
+  Joint motion is smoothed, and the gripper cannot pass through the table.
   *Do this — see that:* finish the orange pick-and-place and an episode card appears
   with its quality score, accept/reject verdict, and a downloadable episode file.
 - **Convert an episode to a LeRobot dataset:**

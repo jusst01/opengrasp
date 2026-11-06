@@ -15,8 +15,17 @@
   .badge{border:1px solid var(--line);border-radius:20px;padding:2px 10px;font-size:12px;color:var(--dim)}
   .badge b{color:var(--grn);font-weight:600}
   main{display:flex;gap:12px;padding:12px;align-items:flex-start}
-  #stage{flex:1 1 auto;min-width:420px}
+  #stageWrap{flex:1 1 auto;min-width:420px;background:var(--bg)}
+  #toolbar{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center}
+  #viewWrap{position:relative}
   #view{width:100%;height:520px;background:#0a0e14;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  #stageWrap:fullscreen{padding:10px}
+  #stageWrap:fullscreen #view{height:calc(100vh - 150px)}
+  #pipLabel{position:absolute;top:14px;left:14px;background:rgba(0,0,0,.55);border:1px solid var(--line);
+            border-radius:4px;padding:1px 7px;font-size:11px;color:#ffb37a;display:none;pointer-events:none}
+  #toast{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:rgba(10,14,20,.88);
+         border:1px solid var(--org);color:var(--txt);border-radius:8px;padding:6px 14px;font-size:13px;
+         opacity:0;transition:opacity .25s;pointer-events:none}
   #side{flex:0 0 340px;display:flex;flex-direction:column;gap:12px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
   .card h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:0 0 8px}
@@ -33,6 +42,8 @@
   .val{font-variant-numeric:tabular-nums;font-size:12px;width:44px;text-align:right}
   #status{font-size:15px;margin-top:6px}
   #status .ok{color:var(--grn)} #status .bad{color:var(--red)} #status .run{color:var(--org)}
+  #goalbarWrap{height:10px;background:#0d1117;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:6px 0 2px}
+  #goalbar{height:100%;width:0%;background:var(--red);transition:width .15s, background .3s}
   table{width:100%;border-collapse:collapse;font-size:12px}
   td,th{padding:3px 4px;border-bottom:1px solid var(--line);text-align:left}
   .split{display:flex;height:16px;border-radius:6px;overflow:hidden;margin:6px 0}
@@ -56,16 +67,31 @@
   <div class="small">Play the arm. Your play becomes robot training data — scored in the open, paid by contract.</div>
 </header>
 <main>
-  <section id="stage">
-    <div id="view"></div>
+  <section id="stageWrap">
+    <div id="toolbar">
+      <button id="expandBtn">⛶ Expand</button>
+      <button id="camBtn">📷 Wrist cam: on</button>
+      <button id="cpSaveBtn">⚑ Save checkpoint (F)</button>
+      <button id="cpLoadBtn">↩ Load checkpoint (G)</button>
+      <span class="small" id="cpState">no checkpoint yet</span>
+    </div>
+    <div id="viewWrap">
+      <div id="view"></div>
+      <div id="pipLabel">WRIST CAM</div>
+      <div id="toast"></div>
+    </div>
     <div class="card" style="margin-top:12px">
       <h2>Controls</h2>
       <div class="small">
-        Joints: <kbd>1</kbd>/<kbd>2</kbd> base · <kbd>3</kbd>/<kbd>4</kbd> shoulder · <kbd>5</kbd>/<kbd>6</kbd> elbow ·
-        <kbd>7</kbd>/<kbd>8</kbd> wrist pitch · <kbd>9</kbd>/<kbd>0</kbd> wrist roll ·
-        <kbd>Space</kbd> gripper open/close · <kbd>R</kbd> reset scene · drag to orbit, scroll to zoom.
-        Sliders on the right drive the same joints (this is joint-space teleoperation, like a real SO-ARM leader arm).
+        <kbd>Q</kbd>/<kbd>E</kbd> base left/right · <kbd>W</kbd>/<kbd>S</kbd> shoulder up/down ·
+        <kbd>A</kbd>/<kbd>D</kbd> elbow · <kbd>Z</kbd>/<kbd>X</kbd> wrist pitch · <kbd>C</kbd>/<kbd>V</kbd> wrist roll ·
+        <kbd>Space</kbd> gripper · <kbd>F</kbd> save checkpoint · <kbd>G</kbd> load checkpoint · <kbd>R</kbd> reset scene.<br/>
+        <b>Mouse:</b> hold &amp; drag the gripper to pull the arm around (inverse kinematics does the rest) ·
+        <b>double-click a cube</b> and the arm flies to it · drag empty space to orbit, scroll to zoom.
+        The translucent ghost shows the goal; the bar below tracks how close you are.
       </div>
+      <div class="row" style="margin-top:8px"><span class="small">Goal match</span><b id="goalPct">0%</b></div>
+      <div id="goalbarWrap"><div id="goalbar"></div></div>
       <div id="status">Pick a task, then press <b>Start Episode</b>. Recording runs at 30 Hz.</div>
     </div>
   </section>
@@ -77,6 +103,7 @@
       <div class="small" id="taskDesc" style="margin-top:6px"></div>
       <button class="primary" id="startBtn">▶ Start Episode</button>
       <div class="row"><span class="small">Timer</span><span class="val" id="timer">0.0s</span></div>
+      <div class="row"><span class="small">Checkpoints used</span><span class="val" id="cpUsed">0</span></div>
     </div>
 
     <div class="card">
@@ -102,7 +129,8 @@
       <div id="epTable"></div>
       <button id="dlDataset" style="margin-top:8px">⬇ Download full dataset JSON</button>
       <div class="small">Acceptance rate and scores are public by design — a dataset buyer
-        can re-run the formula on every episode file and check us.</div>
+        can re-run the formula on every episode file and check us. Checkpoint use is
+        recorded in every episode's metadata.</div>
     </div>
 
     <div class="card">
@@ -135,34 +163,41 @@ ACCEPTED if quality ≥ 60 — full spec in POLICY.md</code>
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 /* ============ POLICY CONSTANTS (mirror POLICY.md — the contract's constants) ============ */
-const POLICY = {
-  acceptThreshold: 60,
-  jerkRef: 80,               // m/s^3 calibration constant for smoothness
-  split: { contributors: 70, treasury: 20, ops: 10 },
-};
+const POLICY = { acceptThreshold: 60, jerkRef: 80, split: { contributors: 70, treasury: 20, ops: 10 } };
 const FPS = 30, EPISODE_LIMIT_S = 120;
 
 /* ============ SCENE ============ */
 const view = document.getElementById('view');
 const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 view.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0e14);
-scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x1a2027, 1.1));
-const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-sun.position.set(0.8, 1.4, 0.6); scene.add(sun);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x1a2027, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(0.8, 1.4, 0.6); sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.left = -0.8; sun.shadow.camera.right = 1.2;
+sun.shadow.camera.top = 0.9; sun.shadow.camera.bottom = -0.6;
+scene.add(sun);
 const camera = new THREE.PerspectiveCamera(46, 1, 0.01, 20);
 camera.position.set(1.0, 0.8, 1.05);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0.28, 0.05, 0);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
 
 const table = new THREE.Mesh(
-  new THREE.BoxGeometry(1.3, 0.05, 0.95),
-  new THREE.MeshStandardMaterial({ color:0x1c2531, roughness:.9 }));
-table.position.set(0.28, -0.025, 0); scene.add(table);
+  new RoundedBoxGeometry(1.3, 0.05, 0.95, 2, 0.008),
+  new THREE.MeshStandardMaterial({ color:0x232f3e, roughness:.85, metalness:.05 }));
+table.position.set(0.28, -0.025, 0); table.receiveShadow = true; scene.add(table);
 const grid = new THREE.GridHelper(1.3, 13, 0x2b3644, 0x232c38);
 grid.position.set(0.28, 0.001, 0); grid.scale.z = 0.95/1.3; scene.add(grid);
 
@@ -171,38 +206,53 @@ function resize(){
   renderer.setSize(w, h); camera.aspect = w/h; camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize);
+document.addEventListener('fullscreenchange', () => setTimeout(resize, 120));
 
-/* ============ ARM (SO-ARM-style, 5 DOF + gripper, joint-space FK) ============ */
-const L = [0.35, 0.30, 0.22];               // upper arm, forearm, wrist lengths
+/* ============ ARM (SO-ARM-style, 5 DOF + gripper) ============ */
+const L = [0.35, 0.30, 0.22];
 const LIMITS = [[-2.4,2.4],[-1.35,1.35],[-2.6,2.6],[-2.2,2.2],[-2.6,2.6]];
 const HOME = [0, -0.45, 0.95, -0.5, 0];
-const joints = [...HOME];
-let grip = 1;                                // 1 = fully open, 0 = closed
+const joints  = [...HOME];     // actual (smoothed) pose — this is what gets recorded
+const jTarget = [...HOME];     // commanded pose — keys, sliders, IK write here
+let grip = 1, gripTarget = 1;  // 1 = fully open, 0 = closed
 
-const matBody = new THREE.MeshStandardMaterial({ color:0xe8e8e8, roughness:.5 });
-const matDark = new THREE.MeshStandardMaterial({ color:0x2b2f36, roughness:.6 });
-const matOrg  = new THREE.MeshStandardMaterial({ color:0xf97316, roughness:.5 });
+const matBody = new THREE.MeshStandardMaterial({ color:0xf2f3f5, roughness:.35, metalness:.15 });
+const matDark = new THREE.MeshStandardMaterial({ color:0x2b2f36, roughness:.5, metalness:.3 });
+const matOrg  = new THREE.MeshStandardMaterial({ color:0xf97316, roughness:.4, metalness:.1 });
 function link(len, w, mat){
-  const m = new THREE.Mesh(new THREE.BoxGeometry(len, w, w), mat);
-  m.position.x = len/2; return m;
+  const m = new THREE.Mesh(new RoundedBoxGeometry(len, w, w, 2, Math.min(0.012, w/3)), mat);
+  m.position.x = len/2; m.castShadow = true; return m;
+}
+function jointBall(r, mat){
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, r*1.15, 24), mat);
+  m.rotation.x = Math.PI/2; m.castShadow = true; return m;
 }
 const baseG = new THREE.Group(); scene.add(baseG);
-const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.09, 0.10, 24), matDark);
-baseMesh.position.y = 0.05; baseG.add(baseMesh);
+const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.10, 0.10, 28), matDark);
+baseMesh.position.y = 0.05; baseMesh.castShadow = true; baseG.add(baseMesh);
 const shoulderG = new THREE.Group(); shoulderG.position.y = 0.10; baseG.add(shoulderG);
-shoulderG.add(link(L[0], 0.055, matBody));
+shoulderG.add(jointBall(0.048, matOrg)); shoulderG.add(link(L[0], 0.055, matBody));
 const elbowG = new THREE.Group(); elbowG.position.x = L[0]; shoulderG.add(elbowG);
-elbowG.add(link(L[1], 0.045, matBody));
+elbowG.add(jointBall(0.040, matOrg)); elbowG.add(link(L[1], 0.045, matBody));
 const wristG = new THREE.Group(); wristG.position.x = L[1]; elbowG.add(wristG);
-wristG.add(link(L[2], 0.036, matOrg));
+wristG.add(jointBall(0.032, matOrg)); wristG.add(link(L[2], 0.036, matOrg));
 const gripG = new THREE.Group(); gripG.position.x = L[2]; wristG.add(gripG);
-const palm = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.02, 0.07), matDark);
-palm.position.x = 0.025; gripG.add(palm);
-const fingerGeo = new THREE.BoxGeometry(0.055, 0.012, 0.014);
+const palm = new THREE.Mesh(new RoundedBoxGeometry(0.05, 0.02, 0.07, 2, 0.006), matDark);
+palm.position.x = 0.025; palm.castShadow = true; gripG.add(palm);
+const fingerGeo = new RoundedBoxGeometry(0.055, 0.012, 0.014, 2, 0.005);
 const fingerL = new THREE.Mesh(fingerGeo, matDark); fingerL.position.set(0.06, 0,  0.02);
 const fingerR = new THREE.Mesh(fingerGeo, matDark); fingerR.position.set(0.06, 0, -0.02);
+fingerL.castShadow = fingerR.castShadow = true;
 gripG.add(fingerL, fingerR);
 const tipRef = new THREE.Object3D(); tipRef.position.set(0.075, 0, 0); gripG.add(tipRef);
+// invisible, fat hit-target around the gripper for mouse dragging
+const gripHit = new THREE.Mesh(new THREE.SphereGeometry(0.10, 10, 10),
+  new THREE.MeshBasicMaterial({ transparent:true, opacity:0, depthWrite:false }));
+gripHit.position.set(0.05, 0, 0); gripG.add(gripHit);
+// wrist camera — the same view a real SO-ARM wrist cam gives a teleoperator
+const wristCam = new THREE.PerspectiveCamera(58, 4/3, 0.01, 6);
+wristCam.position.set(0.0, 0.045, 0); gripG.add(wristCam);
+let wristCamOn = true;
 
 function applyPose(){
   baseG.rotation.y = joints[0];
@@ -210,31 +260,40 @@ function applyPose(){
   elbowG.rotation.z = joints[2];
   wristG.rotation.z = joints[3];
   gripG.rotation.x = joints[4];
-  const spread = 0.008 + grip * 0.030;
+  const spread = heldCube() ? 0.0345 : 0.008 + grip * 0.030;
   fingerL.position.z =  spread; fingerR.position.z = -spread;
   scene.updateMatrixWorld(true);
 }
 const _v = new THREE.Vector3();
 function tipPos(){ return tipRef.getWorldPosition(_v.set(0,0,0)).clone(); }
+function gripPos(){ return gripG.getWorldPosition(new THREE.Vector3()); }
+function grabPoint(){ return tipPos().add(gripPos()).multiplyScalar(0.5); }
 
-/* ============ OBJECTS & TASKS ============ */
+/* ============ OBJECTS, ZONES, GHOSTS, TASKS ============ */
 const CUBE = 0.055, REST_Y = CUBE/2;
-let cubes = [];        // {id, mesh, color}
-let zones = [];        // {x, z, w, d, color|null}
-let held = null;
+let cubes = [], zones = [], ghosts = [], held = null;
+function heldCube(){ return held; }
 const world = new THREE.Group(); scene.add(world);
+const ghostGroup = new THREE.Group(); scene.add(ghostGroup);
 
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.opacity = 1;
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.opacity = 0, 1600);
+}
 function clearWorld(){
-  for (const c of cubes) world.remove(c.mesh);
+  for (const c of cubes) { if (c.mesh.parent) c.mesh.parent.remove(c.mesh); }
   for (const z of zones) world.remove(z.mesh);
-  cubes = []; zones = []; held = null;
+  for (const g of ghosts) ghostGroup.remove(g);
+  cubes = []; zones = []; ghosts = []; held = null;
 }
 function addCube(id, x, z, color){
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(CUBE, CUBE, CUBE),
-    new THREE.MeshStandardMaterial({ color, roughness:.55 }));
-  mesh.position.set(x, REST_Y, z);
+  const mat = new THREE.MeshStandardMaterial({ color, roughness:.5, metalness:.05,
+    emissive: color, emissiveIntensity: 0 });
+  const mesh = new THREE.Mesh(new RoundedBoxGeometry(CUBE, CUBE, CUBE, 2, 0.008), mat);
+  mesh.position.set(x, REST_Y, z); mesh.castShadow = true;
   world.add(mesh);
-  const c = { id, mesh, color };
+  const c = { id, mesh, mat, color };
   cubes.push(c); return c;
 }
 function addZone(x, z, w, d, color){
@@ -247,25 +306,37 @@ function addZone(x, z, w, d, color){
       new THREE.Vector3(-w/2,0,-d/2), new THREE.Vector3(w/2,0,-d/2),
       new THREE.Vector3(w/2,0,d/2), new THREE.Vector3(-w/2,0,d/2)]),
     new THREE.LineBasicMaterial({ color }));
-  edge.rotation.x = 0; edge.position.y = 0.001; g.add(edge);
+  edge.position.y = 0.001; g.add(edge);
   g.position.set(x, 0.002, z); world.add(g);
   const zn = { x, z, w, d, color, mesh:g }; zones.push(zn); return zn;
+}
+function addGhost(x, y, z, color){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(CUBE, CUBE, CUBE),
+    new THREE.MeshBasicMaterial({ color, transparent:true, opacity:.30, wireframe:true }));
+  m.position.set(x, y, z); ghostGroup.add(m); ghosts.push(m); return m;
 }
 const inZone = (c, zn) => Math.abs(c.mesh.position.x - zn.x) < zn.w/2 &&
                           Math.abs(c.mesh.position.z - zn.z) < zn.d/2;
 const released = c => held !== c;
+const hDist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 const TASKS = {
   pick_place: {
     name:'Pick & Place', base:100, par:30,
     desc:'Move the orange cube into the outlined target zone and let go.',
     setup(){
-      addCube('cube', 0.55, 0.20, 0xf97316);
+      const c = addCube('cube', 0.55, 0.20, 0xf97316);
       addZone(0.30, -0.24, 0.17, 0.17, 0xf97316);
+      addGhost(0.30, REST_Y, -0.24, 0xf97316);
       this.ideal = 2 * Math.hypot(0.55-0.30, 0.20+0.24) + 0.25;
+      this.d0 = hDist(c.mesh.position, zones[0]);
     },
     check(){ const c = cubes[0]; return inZone(c, zones[0]) && released(c) &&
              Math.abs(c.mesh.position.y - REST_Y) < 0.012; },
+    goal(){
+      if (this.check()) return 100;
+      return Math.round(90 * clamp01(1 - hDist(cubes[0].mesh.position, zones[0]) / this.d0));
+    },
   },
   stack_two: {
     name:'Stack Two', base:200, par:45,
@@ -273,7 +344,9 @@ const TASKS = {
     setup(){
       addCube('a', 0.50, 0.16, 0x9e9e9e);
       addCube('b', 0.60, -0.14, 0x58a6ff);
+      this.ghost = addGhost(0.50, REST_Y + CUBE, 0.16, 0xffffff);
       this.ideal = 2 * Math.hypot(0.60-0.50, -0.14-0.16) + 0.35;
+      this.d0 = Math.hypot(0.10, 0.30);
     },
     check(){
       const [a, b] = cubes;
@@ -283,6 +356,17 @@ const TASKS = {
         Math.abs(top.mesh.position.y - (REST_Y + CUBE)) < 0.014 &&
         Math.abs(top.mesh.position.x - bot.mesh.position.x) < 0.034 &&
         Math.abs(top.mesh.position.z - bot.mesh.position.z) < 0.034;
+    },
+    goal(){
+      if (this.check()) return 100;
+      const [a, b] = cubes; let best = 0;
+      for (const [top, bot] of [[a,b],[b,a]]){
+        const tgt = { x: bot.mesh.position.x, z: bot.mesh.position.z };
+        const d = Math.hypot(top.mesh.position.x - tgt.x, top.mesh.position.z - tgt.z,
+                             (top.mesh.position.y - (REST_Y + CUBE)) * 0.7);
+        best = Math.max(best, clamp01(1 - d / (this.d0 + CUBE)));
+      }
+      return Math.round(90 * best);
     },
   },
   colour_sort: {
@@ -295,13 +379,24 @@ const TASKS = {
       addZone(0.68, -0.28, 0.15, 0.15, 0xef4444);
       addZone(0.68,  0.00, 0.15, 0.15, 0x22c55e);
       addZone(0.68,  0.28, 0.15, 0.15, 0x3b82f6);
+      addGhost(0.68, REST_Y, -0.28, 0xef4444);
+      addGhost(0.68, REST_Y,  0.00, 0x22c55e);
+      addGhost(0.68, REST_Y,  0.28, 0x3b82f6);
+      this.want = { red:zones[0], green:zones[1], blue:zones[2] };
+      this.d0 = {}; for (const c of cubes) this.d0[c.id] = Math.max(0.05, hDist(c.mesh.position, this.want[c.id]));
       this.ideal = 1.6 * (Math.hypot(0.68-0.52, -0.28-0.24) + Math.hypot(0.68-0.62, 0-0.02) +
                           Math.hypot(0.68-0.50, 0.28+0.20)) + 0.4;
     },
     check(){
-      const want = { red:zones[0], green:zones[1], blue:zones[2] };
-      return cubes.every(c => inZone(c, want[c.id]) && released(c) &&
+      return cubes.every(c => inZone(c, this.want[c.id]) && released(c) &&
                               Math.abs(c.mesh.position.y - REST_Y) < 0.012);
+    },
+    goal(){
+      if (this.check()) return 100;
+      let s = 0;
+      for (const c of cubes)
+        s += inZone(c, this.want[c.id]) ? 1 : clamp01(1 - hDist(c.mesh.position, this.want[c.id]) / this.d0[c.id]);
+      return Math.round(90 * s / cubes.length);
     },
   },
 };
@@ -310,12 +405,36 @@ let taskId = 'pick_place';
 function resetScene(){
   clearWorld();
   joints.splice(0, joints.length, ...HOME);
-  grip = 1;
+  jTarget.splice(0, jTarget.length, ...HOME);
+  grip = 1; gripTarget = 1; tween = null;
   TASKS[taskId].setup();
   applyPose(); syncSliders();
 }
 
-/* ---- grasping: attach on close near a cube, detach + settle on open ---- */
+/* ---- grasping: generous radius, highlight, snap — and a table the hand cannot cross ---- */
+const GRAB_R = 0.115;
+function nearestGrabbable(){
+  const gp = grabPoint();
+  let best = null, bd = GRAB_R;
+  for (const c of cubes){
+    if (c === held) continue;
+    const d = c.mesh.getWorldPosition(new THREE.Vector3()).distanceTo(gp);
+    if (d < bd){ bd = d; best = c; }
+  }
+  return best;
+}
+function updateGrasp(){
+  if (grip < 0.35 && !held){
+    const c = nearestGrabbable();
+    if (c){
+      held = c;
+      c.mesh.position.copy(tipPos());      // snap into the gripper centre
+      c.mesh.rotation.set(0, 0, 0);
+      tipRef.attach(c.mesh);
+    }
+  }
+  if (grip > 0.65 && held){ const c = held; held = null; settle(c); }
+}
 function settle(c){
   scene.attach(c.mesh);
   let support = 0;
@@ -328,29 +447,101 @@ function settle(c){
   c.mesh.position.y = support + REST_Y;
   c.mesh.rotation.set(0, c.mesh.rotation.y, 0);
 }
-function updateGrasp(){
-  if (grip < 0.3 && !held){
-    const tip = tipPos();
-    let best = null, bd = 0.09;
-    for (const c of cubes){
-      const d = c.mesh.position.distanceTo(tip);
-      if (d < bd){ bd = d; best = c; }
-    }
-    if (best){ held = best; tipRef.attach(best.mesh); }
-  }
-  if (grip > 0.6 && held){ const c = held; held = null; settle(c); }
+function highlightGrabbable(){
+  const near = (!held && grip > 0.35) ? nearestGrabbable() : null;
+  for (const c of cubes) c.mat.emissiveIntensity = (c === near) ? 0.55 : 0;
 }
 
-/* ============ CONTROLS ============ */
+/* ============ INVERSE KINEMATICS (analytic, elbow-up, gripper angle preserved) ============ */
+function solveIK(target, thetaG){
+  const out = [...jTarget];
+  const r = Math.hypot(target.x, target.z);
+  if (r > 0.04) out[0] = THREE.MathUtils.clamp(Math.atan2(-target.z, target.x), LIMITS[0][0], LIMITS[0][1]);
+  const wx = r - L[2] * Math.cos(thetaG);
+  const wy = (target.y - 0.10) - L[2] * Math.sin(thetaG);
+  let d = Math.hypot(wx, wy);
+  const dMax = L[0] + L[1] - 0.005, dMin = Math.abs(L[0] - L[1]) + 0.02;
+  const dc = THREE.MathUtils.clamp(d, dMin, dMax);
+  const sx = wx / (d || 1) * dc, sy = wy / (d || 1) * dc; d = dc;
+  const cosE = THREE.MathUtils.clamp((d*d - L[0]*L[0] - L[1]*L[1]) / (2 * L[0] * L[1]), -1, 1);
+  const j3 = -Math.acos(cosE);
+  const j2 = Math.atan2(sy, sx) - Math.atan2(L[1] * Math.sin(j3), L[0] + L[1] * Math.cos(j3));
+  out[1] = THREE.MathUtils.clamp(j2, LIMITS[1][0], LIMITS[1][1]);
+  out[2] = THREE.MathUtils.clamp(j3, LIMITS[2][0], LIMITS[2][1]);
+  out[3] = THREE.MathUtils.clamp(thetaG - out[1] - out[2], LIMITS[3][0], LIMITS[3][1]);
+  return out;
+}
+function commandIK(target, thetaG){
+  const sol = solveIK(target, thetaG);
+  for (let i = 0; i < 5; i++) jTarget[i] = sol[i];
+  syncSliders();
+}
+/* double-click a cube: fly above it, then descend to grab height */
+let tween = null;
+function flyTo(targetPos, thetaG, next){
+  tween = { sol: solveIK(targetPos, thetaG), t: 0, next: next || null };
+}
+function stepTween(dt){
+  if (!tween) return;
+  tween.t += dt;
+  for (let i = 0; i < 5; i++) jTarget[i] = tween.sol[i];
+  const err = Math.max(...joints.map((j, i) => Math.abs(j - tween.sol[i])));
+  if (err < 0.05 || tween.t > 1.6){
+    const n = tween.next; tween = null;
+    if (n) n();
+  }
+}
+
+/* ============ CHECKPOINTS (F = save, G = load) ============ */
+let checkpoint = null, checkpointsUsed = 0;
+function saveCheckpoint(){
+  checkpoint = {
+    j: [...joints], jt: [...jTarget], grip, gripTarget,
+    cubes: cubes.map(c => ({
+      id: c.id,
+      p: c.mesh.getWorldPosition(new THREE.Vector3()).toArray(),
+      q: c.mesh.getWorldQuaternion(new THREE.Quaternion()).toArray(),
+    })),
+    heldId: held ? held.id : null,
+  };
+  document.getElementById('cpState').textContent = 'checkpoint saved — G loads it';
+  toast('⚑ Checkpoint saved');
+}
+function loadCheckpoint(){
+  if (!checkpoint){ toast('No checkpoint yet — press F first'); return; }
+  joints.splice(0, joints.length, ...checkpoint.j);
+  jTarget.splice(0, jTarget.length, ...checkpoint.jt);
+  grip = checkpoint.grip; gripTarget = checkpoint.gripTarget;
+  tween = null; held = null;
+  applyPose();
+  for (const s of checkpoint.cubes){
+    const c = cubes.find(x => x.id === s.id); if (!c) continue;
+    scene.attach(c.mesh);
+    c.mesh.position.fromArray(s.p);
+    c.mesh.quaternion.fromArray(s.q);
+  }
+  if (checkpoint.heldId){
+    const c = cubes.find(x => x.id === checkpoint.heldId);
+    if (c){ held = c; tipRef.attach(c.mesh); }
+  }
+  applyPose(); syncSliders();
+  if (recording){ checkpointsUsed++; document.getElementById('cpUsed').textContent = checkpointsUsed; }
+  toast('↩ Checkpoint loaded');
+}
+
+/* ============ CONTROLS: WASD-style keys, sliders, mouse drag ============ */
 const JOINT_NAMES = ['Base yaw','Shoulder','Elbow','Wrist pitch','Wrist roll'];
 const slidersEl = document.getElementById('sliders');
 const sliderEls = [];
+let activeSlider = -1;
 JOINT_NAMES.forEach((n, i) => {
   const row = document.createElement('div'); row.className = 'row';
   row.innerHTML = `<label>${n}</label>`;
   const s = document.createElement('input');
   s.type = 'range'; s.min = LIMITS[i][0]; s.max = LIMITS[i][1]; s.step = 0.01;
-  s.addEventListener('input', () => { joints[i] = parseFloat(s.value); applyPose(); });
+  s.addEventListener('pointerdown', () => activeSlider = i);
+  addEventListener('pointerup', () => activeSlider = -1);
+  s.addEventListener('input', () => { tween = null; jTarget[i] = parseFloat(s.value); });
   const v = document.createElement('span'); v.className = 'val';
   row.appendChild(s); row.appendChild(v); slidersEl.appendChild(row);
   sliderEls.push({ s, v });
@@ -360,37 +551,94 @@ JOINT_NAMES.forEach((n, i) => {
   row.innerHTML = `<label>Gripper</label>`;
   const s = document.createElement('input');
   s.type = 'range'; s.min = 0; s.max = 1; s.step = 0.01; s.value = 1;
-  s.addEventListener('input', () => { grip = parseFloat(s.value); applyPose(); updateGrasp(); });
-  const v = document.createElement('span'); v.className = 'val'; v.id = 'gripVal';
+  s.addEventListener('input', () => { gripTarget = parseFloat(s.value); });
+  const v = document.createElement('span'); v.className = 'val';
   row.appendChild(s); row.appendChild(v); slidersEl.appendChild(row);
   sliderEls.push({ s, v, isGrip:true });
 }
 function syncSliders(){
   sliderEls.forEach((o, i) => {
-    if (o.isGrip){ o.s.value = grip; o.v.textContent = grip > .6 ? 'open' : grip < .3 ? 'shut' : '···'; }
-    else { o.s.value = joints[i]; o.v.textContent = joints[i].toFixed(2); }
+    if (o.isGrip){ if (activeSlider !== 5) o.s.value = gripTarget; o.v.textContent = grip > .6 ? 'open' : grip < .35 ? 'shut' : '···'; }
+    else { if (activeSlider !== i) o.s.value = jTarget[i]; o.v.textContent = joints[i].toFixed(2); }
   });
 }
-const KEYMAP = { '1':[0,-1],'2':[0,1],'3':[1,-1],'4':[1,1],'5':[2,-1],'6':[2,1],
-                 '7':[3,-1],'8':[3,1],'9':[4,-1],'0':[4,1] };
+/* Q/E base · W/S shoulder · A/D elbow · Z/X wrist pitch · C/V wrist roll */
+const KEYMAP = { q:[0,1], e:[0,-1], w:[1,1], s:[1,-1], a:[2,-1], d:[2,1],
+                 z:[3,-1], x:[3,1], c:[4,-1], v:[4,1] };
 const keysDown = new Set();
 addEventListener('keydown', e => {
-  if (e.code === 'Space'){ e.preventDefault(); if (!e.repeat){ grip = grip > 0.5 ? 0 : 1; applyPose(); updateGrasp(); } }
-  else if (e.key === 'r' || e.key === 'R'){ if (!recording) resetScene(); }
-  else keysDown.add(e.key);
+  const k = e.key.toLowerCase();
+  if (e.code === 'Space'){ e.preventDefault(); if (!e.repeat){ gripTarget = gripTarget > 0.5 ? 0 : 1; } }
+  else if (k === 'f'){ saveCheckpoint(); }
+  else if (k === 'g'){ loadCheckpoint(); }
+  else if (k === 'r'){ if (!recording) resetScene(); }
+  else if (KEYMAP[k]){ tween = null; keysDown.add(k); }
 });
-addEventListener('keyup', e => keysDown.delete(e.key));
+addEventListener('keyup', e => keysDown.delete(e.key.toLowerCase()));
 function driveKeys(dt){
-  let moved = false;
   for (const k of keysDown){
     const m = KEYMAP[k]; if (!m) continue;
-    joints[m[0]] = THREE.MathUtils.clamp(joints[m[0]] + m[1] * 1.8 * dt, LIMITS[m[0]][0], LIMITS[m[0]][1]);
-    moved = true;
+    jTarget[m[0]] = THREE.MathUtils.clamp(jTarget[m[0]] + m[1] * 1.8 * dt, LIMITS[m[0]][0], LIMITS[m[0]][1]);
   }
-  if (moved){ applyPose(); syncSliders(); }
 }
+/* mouse: drag the gripper (IK), double-click a cube to fly to it, orbit otherwise */
+const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+let dragging = false;
+const dragPlane = new THREE.Plane();
+function castFromEvent(e){
+  const r = renderer.domElement.getBoundingClientRect();
+  ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ptr, camera);
+}
+renderer.domElement.addEventListener('pointerdown', e => {
+  castFromEvent(e);
+  if (ray.intersectObject(gripHit, false).length){
+    dragging = true; controls.enabled = false; tween = null;
+    const n = new THREE.Vector3(); camera.getWorldDirection(n);
+    dragPlane.setFromNormalAndCoplanarPoint(n, tipPos());
+    renderer.domElement.setPointerCapture(e.pointerId);
+  }
+});
+renderer.domElement.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  castFromEvent(e);
+  const hit = new THREE.Vector3();
+  if (ray.ray.intersectPlane(dragPlane, hit)){
+    hit.y = THREE.MathUtils.clamp(hit.y, 0.03, 0.68);
+    const rr = Math.hypot(hit.x, hit.z);
+    if (rr > 0.80){ hit.x *= 0.80/rr; hit.z *= 0.80/rr; }
+    commandIK(hit, joints[1] + joints[2] + joints[3]);
+  }
+});
+addEventListener('pointerup', () => { dragging = false; controls.enabled = true; });
+renderer.domElement.addEventListener('dblclick', e => {
+  castFromEvent(e);
+  const hits = ray.intersectObjects(cubes.map(c => c.mesh), false);
+  if (!hits.length) return;
+  const cube = cubes.find(c => c.mesh === hits[0].object);
+  const p = cube.mesh.getWorldPosition(new THREE.Vector3());
+  const above = p.clone(); above.y += 0.17;
+  toast('✈ Flying to ' + cube.id + '…');
+  flyTo(above, -1.35, () => flyTo(p.clone().setY(p.y + 0.005), -1.35, null));
+});
+/* toolbar */
+document.getElementById('expandBtn').addEventListener('click', e => {
+  const w = document.getElementById('stageWrap');
+  if (document.fullscreenElement) document.exitFullscreen();
+  else w.requestFullscreen && w.requestFullscreen();
+  e.currentTarget.blur();
+});
+document.getElementById('camBtn').addEventListener('click', e => {
+  wristCamOn = !wristCamOn;
+  e.currentTarget.textContent = wristCamOn ? '📷 Wrist cam: on' : '📷 Wrist cam: off';
+  document.getElementById('pipLabel').style.display = wristCamOn ? 'block' : 'none';
+  e.currentTarget.blur();
+});
+document.getElementById('cpSaveBtn').addEventListener('click', e => { saveCheckpoint(); e.currentTarget.blur(); });
+document.getElementById('cpLoadBtn').addEventListener('click', e => { loadCheckpoint(); e.currentTarget.blur(); });
 
 /* ============ RECORDER + OPEN QUALITY SCORING ============ */
+const clamp01 = x => Math.max(0, Math.min(1, x));
 let recording = false, recStart = 0, frames = [], lastSample = 0, lastEpisode = null;
 const statusEl = document.getElementById('status');
 const startBtn = document.getElementById('startBtn');
@@ -398,15 +646,16 @@ const timerEl = document.getElementById('timer');
 
 function startEpisode(){
   resetScene();
-  frames = []; recording = true;
+  frames = []; recording = true; checkpointsUsed = 0;
+  document.getElementById('cpUsed').textContent = '0';
   recStart = performance.now(); lastSample = 0;
-  startBtn.textContent = '■ End Episode'; 
+  startBtn.textContent = '■ End Episode';
   statusEl.innerHTML = '<span class="run">● RECORDING</span> — complete the task. Every motion is being written to the episode.';
 }
 function sampleFrame(now){
   const tip = tipPos();
   const objects = {};
-  for (const c of cubes) // world position: a held cube's local position is relative to the gripper
+  for (const c of cubes)
     objects[c.id] = c.mesh.getWorldPosition(new THREE.Vector3()).toArray().map(x => +x.toFixed(4));
   frames.push({
     t: +((now - recStart)/1000).toFixed(3),
@@ -415,7 +664,6 @@ function sampleFrame(now){
     objects,
   });
 }
-const clamp01 = x => Math.max(0, Math.min(1, x));
 function scoreEpisode(success, duration){
   const T = TASKS[taskId];
   let path = 0; const tips = frames.map(f => f.tip);
@@ -444,25 +692,27 @@ function finishEpisode(how){
   const success = how === 'success';
   const sc = scoreEpisode(success, duration);
   const ep = { id: Date.now(), ts: new Date().toISOString(), task: taskId, success,
-               duration_s: duration, frames: frames.length, ...sc, framesData: frames };
+               duration_s: duration, frames: frames.length, checkpoints_used: checkpointsUsed,
+               ...sc, framesData: frames };
   lastEpisode = ep; saveEpisode(ep);
   startBtn.textContent = '▶ Start Episode';
   const res = document.getElementById('result'); res.classList.add('show');
   document.getElementById('resQuality').textContent = sc.quality + ' / 100';
   document.getElementById('resVerdict').innerHTML = sc.accepted
-    ? '<span class="ok" style="color:var(--grn);font-weight:700">ACCEPTED · +' + sc.points + ' pts</span>'
+    ? '<span style="color:var(--grn);font-weight:700">ACCEPTED · +' + sc.points + ' pts</span>'
     : '<span style="color:var(--red);font-weight:700">REJECTED</span>';
   document.getElementById('resDetail').textContent =
     (success ? 'Task completed' : 'Task not completed (' + how + ')') +
     ` · ${duration}s · tip path ${sc.path} m · mean jerk ${sc.meanJerk} m/s³` +
     ` · smoothness ${sc.smoothness} · speed ${sc.speed} · path-eff ${sc.pathS}` +
+    ` · checkpoints used ${checkpointsUsed}` +
     (sc.accepted ? '' : ' · Below the bar — smoother and closer to par time scores higher. The formula is open; re-run it on the episode file and check us.');
   statusEl.innerHTML = success
     ? '<span class="ok">✔ Episode complete.</span> It is in your dataset below — download it and verify the score yourself.'
     : '<span class="bad">Episode ended.</span> Try again — rejected episodes are recorded too, with the reason shown. That is the point of an open pipeline.';
   renderStats();
 }
-startBtn.addEventListener('click', () => recording ? finishEpisode('manual') : startEpisode());
+startBtn.addEventListener('click', e => { recording ? finishEpisode('manual') : startEpisode(); e.currentTarget.blur(); });
 
 /* ============ STORAGE + EXPORT (LeRobot-style) ============ */
 const LS_KEY = 'og_eps_v1';
@@ -480,7 +730,8 @@ function episodeJSON(ep){
     meta: { task: ep.task, robot: 'so-arm-style 5dof+gripper', fps: FPS,
             success: ep.success, quality: ep.quality, accepted: ep.accepted,
             points: ep.points, duration_s: ep.duration_s,
-            mean_jerk: ep.meanJerk, tip_path_m: ep.path, policy_version: 'v0' },
+            mean_jerk: ep.meanJerk, tip_path_m: ep.path,
+            checkpoints_used: ep.checkpoints_used || 0, policy_version: 'v0' },
     frames: fd.map((f, i) => {
       const nx = fd[i+1];
       return { timestamp: f.t, episode_index: 0, frame_index: i,
@@ -521,29 +772,58 @@ function renderStats(){
     ? `<table><tr><th>Task</th><th>Quality</th><th>Verdict</th><th>Pts</th></tr>${rows}</table>` : '';
 }
 
-/* ============ TASK BUTTONS + MAIN LOOP ============ */
+/* ============ TASK BUTTONS ============ */
 const taskBtns = document.getElementById('taskBtns');
 Object.entries(TASKS).forEach(([id, t]) => {
   const b = document.createElement('button');
   b.textContent = `${t.name} · ${t.base}pts`;
-  b.addEventListener('click', () => {
+  b.addEventListener('click', e => {
     if (recording) return;
     taskId = id;
     document.querySelectorAll('#taskBtns button').forEach(x => x.classList.remove('sel'));
     b.classList.add('sel');
     document.getElementById('taskDesc').textContent = t.desc + ` Par ${t.par}s.`;
-    resetScene();
+    resetScene(); e.currentTarget.blur();
   });
   if (id === taskId){ b.classList.add('sel');
     document.getElementById('taskDesc').textContent = t.desc + ` Par ${t.par}s.`; }
   taskBtns.appendChild(b);
 });
 
+/* ============ MAIN LOOP: smoothing, floor guard, HUD, wrist cam ============ */
 const clock = new THREE.Clock();
+const goalPctEl = document.getElementById('goalPct');
+const goalBarEl = document.getElementById('goalbar');
 function animate(){
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
   driveKeys(dt);
+  stepTween(dt);
+  // critically-damped-ish smoothing: commanded pose -> actual pose (kills the stiffness)
+  const prev = [...joints];
+  const k = 1 - Math.exp(-dt / 0.07);
+  for (let i = 0; i < 5; i++) joints[i] += (jTarget[i] - joints[i]) * k;
+  grip += (gripTarget - grip) * (1 - Math.exp(-dt / 0.05));
+  applyPose();
+  // floor guard: the gripper (and anything it holds) may not pass through the table
+  const tipY = tipPos().y;
+  const heldBottom = held ? held.mesh.getWorldPosition(new THREE.Vector3()).y - CUBE/2 : 1;
+  if (tipY < 0.02 || heldBottom < 0.004){
+    joints.splice(0, joints.length, ...prev);
+    jTarget.splice(0, jTarget.length, ...prev);
+    applyPose();
+  }
+  updateGrasp();
+  highlightGrabbable();
+  // stack ghost hovers over the base cube
+  if (taskId === 'stack_two' && TASKS.stack_two.ghost && cubes[0])
+    TASKS.stack_two.ghost.position.set(cubes[0].mesh.position.x, REST_Y + CUBE, cubes[0].mesh.position.z);
+  // goal HUD
+  const pct = TASKS[taskId].goal();
+  goalPctEl.textContent = pct + '%';
+  goalBarEl.style.width = pct + '%';
+  goalBarEl.style.background = `hsl(${pct * 1.2}, 80%, 45%)`;
+  // recording
   if (recording){
     const now = performance.now();
     timerEl.textContent = ((now - recStart)/1000).toFixed(1) + 's';
@@ -552,8 +832,27 @@ function animate(){
     else if ((now - recStart)/1000 > EPISODE_LIMIT_S) finishEpisode('timeout');
   }
   controls.update();
+  // main view
+  const W = view.clientWidth, H = view.clientHeight;
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, W, H);
   renderer.render(scene, camera);
+  // wrist-cam picture-in-picture (top-left)
+  if (wristCamOn){
+    const fwd = new THREE.Vector3(1, 0, 0).applyQuaternion(gripG.getWorldQuaternion(new THREE.Quaternion()));
+    const tgt = tipPos().add(fwd.multiplyScalar(0.30)); tgt.y -= 0.05;
+    wristCam.lookAt(tgt);
+    const pw = Math.min(260, Math.floor(W * 0.34)), ph = Math.floor(pw * 0.75);
+    renderer.clearDepth();
+    renderer.setScissorTest(true);
+    renderer.setScissor(10, H - ph - 10, pw, ph);
+    renderer.setViewport(10, H - ph - 10, pw, ph);
+    renderer.render(scene, wristCam);
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, W, H);
+  }
 }
+document.getElementById('pipLabel').style.display = 'block';
 resetScene(); renderStats(); resize(); animate();
 </script>
 </body>
