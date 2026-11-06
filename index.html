@@ -428,7 +428,8 @@ function updateGrasp(){
     const c = nearestGrabbable();
     if (c){
       held = c;
-      c.mesh.position.copy(tipPos());      // snap into the gripper centre
+      const tp = tipPos(); tp.y = Math.max(tp.y, REST_Y);  // never snap a cube below rest height
+      c.mesh.position.copy(tp);            // snap into the gripper centre
       c.mesh.rotation.set(0, 0, 0);
       tipRef.attach(c.mesh);
     }
@@ -795,7 +796,19 @@ Object.entries(TASKS).forEach(([id, t]) => {
   taskBtns.appendChild(b);
 });
 
-/* ============ MAIN LOOP: smoothing, floor guard, HUD, wrist cam ============ */
+/* ============ MAIN LOOP: smoothing, body-wide floor constraint, HUD, wrist cam ============ */
+/* How far any body part (elbow, wrist, fingertips, held cube) dips below its floor.
+   Motion is accepted when it does not make penetration worse; partial steps are
+   tried before giving up, and the commanded target is never eaten — so the arm can
+   always slide along the table or lift out, and never freezes mid-grab. */
+const _pe = new THREE.Vector3();
+function penetration(){
+  let pen = Math.max(0.016 - tipPos().y,
+                     0.035 - elbowG.getWorldPosition(_pe).y,
+                     0.035 - wristG.getWorldPosition(_pe).y);
+  if (held) pen = Math.max(pen, -0.002 - (held.mesh.getWorldPosition(_pe).y - CUBE/2));
+  return pen;
+}
 const clock = new THREE.Clock();
 const goalPctEl = document.getElementById('goalPct');
 const goalBarEl = document.getElementById('goalbar');
@@ -806,18 +819,21 @@ function animate(){
   stepTween(dt);
   // critically-damped-ish smoothing: commanded pose -> actual pose (kills the stiffness)
   const prev = [...joints];
+  const penPrev = penetration();
   const k = 1 - Math.exp(-dt / 0.07);
   for (let i = 0; i < 5; i++) joints[i] += (jTarget[i] - joints[i]) * k;
   grip += (gripTarget - grip) * (1 - Math.exp(-dt / 0.05));
   applyPose();
   syncSliders();
-  // floor guard: the gripper (and anything it holds) may not pass through the table
-  const tipY = tipPos().y;
-  const heldBottom = held ? held.mesh.getWorldPosition(new THREE.Vector3()).y - CUBE/2 : 1;
-  if (tipY < 0.02 || heldBottom < 0.004){
-    joints.splice(0, joints.length, ...prev);
-    jTarget.splice(0, jTarget.length, ...prev);
-    applyPose();
+  // floor constraint: no body part through the table — without freezing the arm
+  if (penetration() > penPrev + 1e-6){
+    let ok = false;
+    for (const s of [0.5, 0.25, 0.1]){
+      for (let i = 0; i < 5; i++) joints[i] = prev[i] + (joints[i] - prev[i]) * s;
+      applyPose();
+      if (penetration() <= penPrev + 1e-6){ ok = true; break; }
+    }
+    if (!ok){ joints.splice(0, joints.length, ...prev); applyPose(); }
   }
   updateGrasp();
   highlightGrabbable();
@@ -846,7 +862,7 @@ function animate(){
   // wrist-cam picture-in-picture (top-left)
   if (wristCamOn){
     const fwd = new THREE.Vector3(1, 0, 0).applyQuaternion(gripG.getWorldQuaternion(new THREE.Quaternion()));
-    const tgt = tipPos().add(fwd.multiplyScalar(0.30)); tgt.y -= 0.05;
+    const tgt = tipPos().add(fwd.multiplyScalar(0.30)); tgt.y -= 0.09;
     wristCam.lookAt(tgt);
     const pw = Math.min(260, Math.floor(W * 0.34)), ph = Math.floor(pw * 0.75);
     renderer.clearDepth();
