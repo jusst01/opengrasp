@@ -87,8 +87,7 @@ the rates in a contract and the scoring formula in this repo.
 
 ## Disclosure
 
-This is one of two independent projects by the same author in this hackathon; the other
-is **Aegis** (an AI-security contract, Security track). They share no code.
+OpenGrasp is the author's first and currently only project in this hackathon.
 
 ## License
 
