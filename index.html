@@ -21,6 +21,11 @@
   #view{width:100%;height:520px;background:#0a0e14;border:1px solid var(--line);border-radius:10px;overflow:hidden}
   #stageWrap:fullscreen{padding:10px}
   #stageWrap:fullscreen #view{height:calc(100vh - 150px)}
+  #sensBar{display:flex;align-items:center;gap:10px;margin-top:8px;background:var(--panel);
+           border:1px solid var(--line);border-radius:8px;padding:7px 12px}
+  #sensBar span{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+  #sensBar input{flex:1;accent-color:var(--grn)}
+  #sensBar b{font-variant-numeric:tabular-nums;min-width:44px;text-align:right}
   #pipLabel{position:absolute;top:14px;left:14px;background:rgba(0,0,0,.55);border:1px solid var(--line);
             border-radius:4px;padding:1px 7px;font-size:11px;color:#ffb37a;display:none;pointer-events:none}
   #toast{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:rgba(10,14,20,.88);
@@ -80,6 +85,11 @@
       <div id="pipLabel">WRIST CAM</div>
       <div id="toast"></div>
     </div>
+    <div id="sensBar">
+      <span>Sensitivity</span>
+      <input type="range" id="sensSlider" min="0.1" max="3" step="0.05" value="1"/>
+      <b id="sensVal">100%</b>
+    </div>
     <div class="card" style="margin-top:12px">
       <h2>Controls</h2>
       <div class="small">
@@ -89,6 +99,8 @@
         <b>Mouse:</b> hold &amp; drag the gripper to pull the arm around (inverse kinematics does the rest) ·
         <b>double-click a cube</b> and the arm flies to it · drag empty space to orbit, scroll to zoom.
         The translucent ghost shows the goal; the bar below tracks how close you are.
+        The <b>Sensitivity</b> slider under the view scales key speed and mouse-drag travel
+        (and is recorded in the episode metadata, like everything else here).
       </div>
       <div class="row" style="margin-top:8px"><span class="small">Goal match</span><b id="goalPct">0%</b></div>
       <div id="goalbarWrap"><div id="goalbar"></div></div>
@@ -576,19 +588,26 @@ addEventListener('keydown', e => {
   else if (KEYMAP[k]){ tween = null; keysDown.add(k);
     if (!e.repeat){ // a single tap must visibly step the joint, not just a hold
       const m = KEYMAP[k];
-      jTarget[m[0]] = THREE.MathUtils.clamp(jTarget[m[0]] + m[1] * 0.07, LIMITS[m[0]][0], LIMITS[m[0]][1]);
+      jTarget[m[0]] = THREE.MathUtils.clamp(jTarget[m[0]] + m[1] * 0.07 * sensitivity, LIMITS[m[0]][0], LIMITS[m[0]][1]);
     } }
 });
 addEventListener('keyup', e => keysDown.delete(e.key.toLowerCase()));
 function driveKeys(dt){
   for (const k of keysDown){
     const m = KEYMAP[k]; if (!m) continue;
-    jTarget[m[0]] = THREE.MathUtils.clamp(jTarget[m[0]] + m[1] * 1.8 * dt, LIMITS[m[0]][0], LIMITS[m[0]][1]);
+    jTarget[m[0]] = THREE.MathUtils.clamp(jTarget[m[0]] + m[1] * 1.8 * sensitivity * dt, LIMITS[m[0]][0], LIMITS[m[0]][1]);
   }
 }
+/* sensitivity: scales key speed, tap step, and mouse-drag travel (Axis-style) */
+let sensitivity = 1;
+const sensSlider = document.getElementById('sensSlider');
+sensSlider.addEventListener('input', () => {
+  sensitivity = parseFloat(sensSlider.value);
+  document.getElementById('sensVal').textContent = Math.round(sensitivity * 100) + '%';
+});
 /* mouse: drag the gripper (IK), double-click a cube to fly to it, orbit otherwise */
 const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
-let dragging = false;
+let dragging = false, dragAnchor = null;
 const dragPlane = new THREE.Plane();
 function castFromEvent(e){
   const r = renderer.domElement.getBoundingClientRect();
@@ -601,21 +620,27 @@ renderer.domElement.addEventListener('pointerdown', e => {
     dragging = true; controls.enabled = false; tween = null;
     const n = new THREE.Vector3(); camera.getWorldDirection(n);
     dragPlane.setFromNormalAndCoplanarPoint(n, tipPos());
+    const p0 = new THREE.Vector3();
+    dragAnchor = ray.ray.intersectPlane(dragPlane, p0)
+      ? { plane: p0.clone(), tip: tipPos() } : null;
     renderer.domElement.setPointerCapture(e.pointerId);
   }
 });
 renderer.domElement.addEventListener('pointermove', e => {
-  if (!dragging) return;
+  if (!dragging || !dragAnchor) return;
   castFromEvent(e);
   const hit = new THREE.Vector3();
   if (ray.ray.intersectPlane(dragPlane, hit)){
-    hit.y = THREE.MathUtils.clamp(hit.y, 0.03, 0.68);
-    const rr = Math.hypot(hit.x, hit.z);
-    if (rr > 0.80){ hit.x *= 0.80/rr; hit.z *= 0.80/rr; }
-    commandIK(hit, joints[1] + joints[2] + joints[3]);
+    // sensitivity scales travel: <100% finer control, >100% faster sweeps
+    const target = dragAnchor.tip.clone()
+      .add(hit.sub(dragAnchor.plane).multiplyScalar(sensitivity));
+    target.y = THREE.MathUtils.clamp(target.y, 0.03, 0.68);
+    const rr = Math.hypot(target.x, target.z);
+    if (rr > 0.80){ target.x *= 0.80/rr; target.z *= 0.80/rr; }
+    commandIK(target, joints[1] + joints[2] + joints[3]);
   }
 });
-addEventListener('pointerup', () => { dragging = false; controls.enabled = true; });
+addEventListener('pointerup', () => { dragging = false; dragAnchor = null; controls.enabled = true; });
 renderer.domElement.addEventListener('dblclick', e => {
   castFromEvent(e);
   const hits = ray.intersectObjects(cubes.map(c => c.mesh), false);
@@ -699,6 +724,7 @@ function finishEpisode(how){
   const sc = scoreEpisode(success, duration);
   const ep = { id: Date.now(), ts: new Date().toISOString(), task: taskId, success,
                duration_s: duration, frames: frames.length, checkpoints_used: checkpointsUsed,
+               sensitivity: +sensitivity.toFixed(2),
                ...sc, framesData: frames };
   lastEpisode = ep; saveEpisode(ep);
   startBtn.textContent = '▶ Start Episode';
@@ -737,7 +763,8 @@ function episodeJSON(ep){
             success: ep.success, quality: ep.quality, accepted: ep.accepted,
             points: ep.points, duration_s: ep.duration_s,
             mean_jerk: ep.meanJerk, tip_path_m: ep.path,
-            checkpoints_used: ep.checkpoints_used || 0, policy_version: 'v0' },
+            checkpoints_used: ep.checkpoints_used || 0,
+            sensitivity: ep.sensitivity ?? 1, policy_version: 'v0' },
     frames: fd.map((f, i) => {
       const nx = fd[i+1];
       return { timestamp: f.t, episode_index: 0, frame_index: i,
