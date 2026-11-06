@@ -572,7 +572,11 @@ addEventListener('keydown', e => {
   else if (k === 'f'){ saveCheckpoint(); }
   else if (k === 'g'){ loadCheckpoint(); }
   else if (k === 'r'){ if (!recording) resetScene(); }
-  else if (KEYMAP[k]){ tween = null; keysDown.add(k); }
+  else if (KEYMAP[k]){ tween = null; keysDown.add(k);
+    if (!e.repeat){ // a single tap must visibly step the joint, not just a hold
+      const m = KEYMAP[k];
+      jTarget[m[0]] = THREE.MathUtils.clamp(jTarget[m[0]] + m[1] * 0.07, LIMITS[m[0]][0], LIMITS[m[0]][1]);
+    } }
 });
 addEventListener('keyup', e => keysDown.delete(e.key.toLowerCase()));
 function driveKeys(dt){
@@ -619,7 +623,8 @@ renderer.domElement.addEventListener('dblclick', e => {
   const p = cube.mesh.getWorldPosition(new THREE.Vector3());
   const above = p.clone(); above.y += 0.17;
   toast('✈ Flying to ' + cube.id + '…');
-  flyTo(above, -1.35, () => flyTo(p.clone().setY(p.y + 0.005), -1.35, null));
+  flyTo(above, -1.35, () => flyTo(p.clone().setY(p.y + 0.005), -1.35,
+    () => { gripTarget = 0; toast('✊ Grabbed ' + cube.id + ' — Space lets go'); }));
 });
 /* toolbar */
 document.getElementById('expandBtn').addEventListener('click', e => {
@@ -805,6 +810,7 @@ function animate(){
   for (let i = 0; i < 5; i++) joints[i] += (jTarget[i] - joints[i]) * k;
   grip += (gripTarget - grip) * (1 - Math.exp(-dt / 0.05));
   applyPose();
+  syncSliders();
   // floor guard: the gripper (and anything it holds) may not pass through the table
   const tipY = tipPos().y;
   const heldBottom = held ? held.mesh.getWorldPosition(new THREE.Vector3()).y - CUBE/2 : 1;
