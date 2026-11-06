@@ -128,7 +128,7 @@
 
   <aside id="side">
     <div class="card">
-      <h2>1 · Task</h2>
+      <h2>1 · Quest</h2>
       <div class="tasks" id="taskBtns"></div>
       <div class="small" id="taskDesc" style="margin-top:6px"></div>
       <button class="primary" id="startBtn">▶ Start Episode</button>
@@ -361,8 +361,8 @@ const hDist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 const TASKS = {
   pick_place: {
-    name:'Pick & Place', base:100, par:30,
-    desc:'Move the orange cube into the outlined target zone and let go.',
+    name:'Relic Evacuation', base:100, par:30,
+    desc:'Raise the relic (the orange cube) from the rubble and set it down inside the glowing vault zone. Let go to seal the recovery.',
     setup(){
       const c = addCube('cube', 0.55, 0.20, 0xf97316);
       addZone(0.30, -0.24, 0.17, 0.17, 0xf97316);
@@ -378,8 +378,8 @@ const TASKS = {
     },
   },
   stack_two: {
-    name:'Stack Two', base:200, par:45,
-    desc:'Stack one cube on top of the other. Either order works.',
+    name:'Restore the Monolith', base:200, par:45,
+    desc:'Raise the shrine again: stack one block squarely on top of the other. Either order works.',
     setup(){
       addCube('a', 0.50, 0.16, 0x9e9e9e);
       addCube('b', 0.60, -0.14, 0x58a6ff);
@@ -408,8 +408,8 @@ const TASKS = {
     },
   },
   colour_sort: {
-    name:'Colour Sort', base:250, par:60,
-    desc:'Put each cube into the bin square of its own colour.',
+    name:'Restock the Potion Shelf', base:250, par:60,
+    desc:'The shop opens soon and the shelf is empty: put each potion crate into the bin square of its own colour.',
     setup(){
       addCube('red',   0.52,  0.24, 0xef4444);
       addCube('green', 0.62,  0.02, 0x22c55e);

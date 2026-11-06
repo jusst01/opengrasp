@@ -94,6 +94,15 @@ the rates in a contract and the scoring formula in this repo.
 - [ ] Episode assets (NEP-171) with licensing royalties to contributors
 - [ ] Buyer-side: dataset licensing checkout paid in NEAR, split executed by contract
 - [ ] More robots (Franka-style 7-DOF), more tasks, difficulty ladder
+- [ ] **Season 1 — the adventure layer.** The same engine and the same recorded data
+  stream under a quest skin: a workshop hub, a quest chain that reskins the three
+  tasks (already named in-game: Relic Evacuation, Restore the Monolith, Restock the
+  Potion Shelf), a free-play corner whose unstructured play stays relabelable as
+  training data, mission stars driven by the same public quality formula, cosmetic
+  arm skins, and a public contributor-earnings board. The research basis (RoboCade's
+  gamified teleoperation, Learning from Play) says the skin may change freely as long
+  as the manipulation primitives and the robot-native recording do not — so the skin
+  changes; the data doesn't.
 
 ## Disclosure
 

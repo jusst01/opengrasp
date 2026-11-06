@@ -10,11 +10,11 @@ or quietly sell. Points are an accounting unit inside the contract, nothing else
 
 ## Points per accepted episode
 
-| Task | Base points | Par time |
+| Quest (task id) | Base points | Par time |
 |---|---|---|
-| Pick & Place | 100 | 30 s |
-| Stack Two | 200 | 45 s |
-| Colour Sort | 250 | 60 s |
+| Relic Evacuation (`pick_place`) | 100 | 30 s |
+| Restore the Monolith (`stack_two`) | 200 | 45 s |
+| Restock the Potion Shelf (`colour_sort`) | 250 | 60 s |
 
 `points = base_points × quality / 100`, paid only for **accepted** episodes.
 Quality and points are each rounded to the nearest integer.
