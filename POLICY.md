@@ -3,10 +3,19 @@
 These are the numbers the game runs on. They are mirrored as constants in the NEAR
 policy contract. If a number changes, it changes here, in a public commit, first.
 
-## There is no OpenGrasp token
+## Token status and sustainability
 
-Rewards are denominated and paid in **NEAR**. There is no token to vest, unlock,
-or quietly sell. Points are an accounting unit inside the contract, nothing else.
+OpenGrasp does **not** launch, sell, or distribute a native token as part of the
+NEAR Hackathon build. Contributor rewards and dataset licensing are accounted
+in points and settled in NEAR under the rates in this policy.
+
+A future protocol token is not ruled out. If one is introduced, its role will
+be limited to product utility: paying for dataset access and custom data
+collection, opening contributor bounties, and coordinating governance. It will
+not change points already earned or the dataset revenue split retroactively.
+Its supply, allocations, treasury wallets, vesting, and unlock rules must be
+published before launch. Until then, no OpenGrasp token exists, and nothing in
+this policy is an offer to sell one.
 
 ## Points per accepted episode
 
@@ -59,4 +68,4 @@ verify that the episodes they paid for are the episodes that were scored.
 
 - Change a conversion rate retroactively.
 - Sell contributor episodes without the split above.
-- Introduce a token and allocate ourselves a vesting bag.
+- Launch a token without first publishing its supply, allocations, treasury wallets, vesting, and unlock schedule.

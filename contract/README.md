@@ -2,6 +2,14 @@
 
 One contract holds everything players normally have to take on trust.
 
+## Token scope
+
+V0 intentionally has no native-token component: rewards and dataset licensing
+are settled in NEAR. A future utility token would be a separate protocol
+component for marketplace access, custom data bounties, and governance. It
+would require published supply, allocation, treasury-wallet, vesting, and
+unlock terms before launch, and it would not alter the v0 rates or split.
+
 ## Constants (mirror `POLICY.md` exactly)
 
 ```

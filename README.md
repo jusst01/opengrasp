@@ -19,14 +19,14 @@ They prove the demand. But their economics are a black box, and the market has n
 | | Closed incumbents | OpenGrasp |
 |---|---|---|
 | Points → payout conversion | Undisclosed, off-chain, changeable at will | **Published constants** (see `POLICY.md`), to be enforced by the NEAR policy contract — design published in `contract/`, deployment on the roadmap |
-| Native token | Yes — with vesting wallets the community has to sleuth on-chain | **No token at all.** Rewards are paid in NEAR |
+| Native token | Yes — with vesting wallets the community has to sleuth on-chain | **No token launch or sale in this build.** Rewards and licensing settle in NEAR; any future utility token requires published supply, wallet, and vesting terms before launch |
 | Dataset licensing revenue | Opaque | **On-chain split: 70% contributors / 20% treasury / 10% ops** |
 | Which demonstrations count? | Undisclosed acceptance | **Open quality formula** (below); acceptance rate is public |
 | Who owns an episode? | The platform | The contributor — episodes are registered assets (NEP-171 roadmap) |
 
-On social media, incumbent platforms are routinely accused of quietly selling their own
-token from vesting multisigs while telling players the points system is "not financial".
-Whether or not every accusation is fair, the root cause is structural: **when the rates
+The recurring complaint is not simply that a platform has a token; it is that
+conversion rates and treasury decisions cannot be verified. Whether or not
+every accusation is fair, the root cause is structural: **when the rates
 live in a private spreadsheet, nobody can verify anything.** OpenGrasp's answer is to put
 the rates in a contract and the scoring formula in this repo.
 
@@ -57,6 +57,10 @@ the rates in a contract and the scoring formula in this repo.
   next milestone.
 - **Accounts players never notice:** the game is playable end-to-end in the browser
   with no wallet; an account only enters when points are claimed.
+- **Sustainability:** dataset licensing and paid data collection are the intended
+  operating revenue. A protocol utility token may be evaluated after the
+  hackathon for marketplace access, custom bounties, and governance; it is not
+  launched or sold as part of this submission.
 
 ## Try it
 
@@ -94,15 +98,17 @@ the rates in a contract and the scoring formula in this repo.
 - [ ] Episode assets (NEP-171) with licensing royalties to contributors
 - [ ] Buyer-side: dataset licensing checkout paid in NEAR, split executed by contract
 - [ ] More robots (Franka-style 7-DOF), more tasks, difficulty ladder
-- [ ] **Season 1 — the adventure layer.** The same engine and the same recorded data
-  stream under a quest skin: a workshop hub, a quest chain that reskins the three
-  tasks (already named in-game: Relic Evacuation, Restore the Monolith, Restock the
-  Potion Shelf), a free-play corner whose unstructured play stays relabelable as
-  training data, mission stars driven by the same public quality formula, cosmetic
-  arm skins, and a public contributor-earnings board. The research basis (RoboCade's
-  gamified teleoperation, Learning from Play) says the skin may change freely as long
-  as the manipulation primitives and the robot-native recording do not — so the skin
-  changes; the data doesn't.
+- [ ] **Season 1 — a real game layer, not a reskin.** An expedition map and
+  physically distinct levels built around manipulation mechanics: rescuing a
+  fragile relic under impact/acceleration limits, rebuilding a monolith whose
+  pieces can lean or fall, handling and pouring unstable potion bottles, and
+  aligning/inserting a keystone into a gate. Stars, unlocks, and hub restoration
+  provide progression; a free-play workshop produces unstructured play that can
+  be hindsight-relabelled. The player pursues level goals and constraints, while
+  the recorder still receives robot-native state/action streams and the public
+  quality formula still decides the handling result. The research basis
+  (RoboCade's gamified teleoperation, Learning from Play) is that presentation
+  and goals may change, but the manipulation primitives must remain real.
 
 ## Disclosure
 

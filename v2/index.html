@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>OpenGrasp Expedition — Rescue the Relic (MuJoCo Prototype)</title>
+<style>
+  :root{
+    --ink:#eaf6ff; --dim:#9db8c9; --gold:#f5b93f; --teal:#2ee6c8; --panel:rgba(10,22,36,.82);
+    --line:rgba(120,200,230,.25); --bad:#ff6b5e; --good:#43e08a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:#060b14;color:var(--ink);
+    font-family:"Avenir Next","Segoe UI",system-ui,-apple-system,sans-serif;}
+  #scene{position:fixed;inset:0}
+  canvas{display:block}
+  .vignette{position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 42%, transparent 55%, rgba(2,6,12,.55) 100%);}
+  header{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;
+    padding:10px 16px;pointer-events:none;z-index:5}
+  header .brand{font-weight:700;letter-spacing:.14em;font-size:13px;color:var(--ink)}
+  header .brand b{color:var(--gold)}
+  header .tag{font-size:11px;color:var(--dim);letter-spacing:.08em}
+  header a{pointer-events:auto;color:var(--teal);font-size:12px;text-decoration:none;border:1px solid var(--line);
+    padding:6px 10px;border-radius:999px;background:var(--panel)}
+  .card{position:fixed;z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:12px 14px;backdrop-filter:blur(8px);box-shadow:0 10px 30px rgba(0,0,0,.35)}
+  #mission{top:56px;left:14px;width:248px}
+  #mission h2{margin:0 0 2px;font-size:16px;color:var(--gold);letter-spacing:.04em}
+  #mission .sub{font-size:11.5px;color:var(--dim);margin-bottom:8px;line-height:1.45}
+  #steps{list-style:none;margin:0 0 10px;padding:0;font-size:12.5px}
+  #steps li{padding:3px 0 3px 22px;position:relative;color:var(--dim)}
+  #steps li::before{content:"○";position:absolute;left:2px;color:var(--dim)}
+  #steps li.active{color:var(--ink)}
+  #steps li.active::before{content:"◉";color:var(--teal)}
+  #steps li.done{color:var(--good)}
+  #steps li.done::before{content:"✔";color:var(--good)}
+  .meter{height:8px;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden;margin:4px 0 2px}
+  .meter>i{display:block;height:100%;background:linear-gradient(90deg,var(--teal),var(--gold));width:100%;transition:width .25s}
+  .meter.bad>i{background:linear-gradient(90deg,#ff8a5e,var(--bad))}
+  .row{display:flex;justify-content:space-between;font-size:11.5px;color:var(--dim)}
+  .row b{color:var(--ink);font-variant-numeric:tabular-nums}
+  #guardianNote{font-size:11.5px;margin-top:8px;color:var(--dim)}
+  #guardianNote.awake{color:var(--gold)}
+  #hud{top:56px;right:14px;text-align:right;min-width:132px}
+  #hud .big{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+  #hud .lab{font-size:10.5px;color:var(--dim);letter-spacing:.12em}
+  #stars{font-size:17px;color:var(--gold);letter-spacing:2px;min-height:21px}
+  #toast{position:fixed;left:50%;top:16%;transform:translateX(-50%) scale(.96);z-index:8;
+    background:rgba(8,20,32,.92);border:1px solid var(--gold);color:var(--ink);padding:10px 20px;border-radius:999px;
+    font-size:15px;opacity:0;transition:all .25s;pointer-events:none;white-space:nowrap}
+  #toast.show{opacity:1;transform:translateX(-50%) scale(1)}
+  #controls{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:5;display:flex;gap:14px;align-items:center;
+    background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 18px;font-size:12px;color:var(--dim);
+    backdrop-filter:blur(8px);white-space:nowrap;max-width:96vw;overflow-x:auto}
+  #controls b{color:var(--ink);background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);
+    border-radius:6px;padding:1px 6px;font-weight:600}
+  .tbtn{pointer-events:auto;cursor:pointer;border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ink);
+    border-radius:10px;padding:8px 12px;font-size:13px;user-select:none;-webkit-user-select:none;touch-action:none}
+  .tbtn:active{background:rgba(46,230,200,.25)}
+  #touch{position:fixed;right:12px;bottom:64px;z-index:6;display:none;flex-direction:column;gap:8px}
+  @media (pointer:coarse){ #touch{display:flex} #controls .kb{display:none} }
+  .overlay{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
+    background:rgba(3,8,15,.72);backdrop-filter:blur(4px)}
+  .sheet{max-width:520px;width:92vw;background:linear-gradient(160deg,rgba(16,34,54,.97),rgba(8,18,30,.97));
+    border:1px solid var(--line);border-radius:20px;padding:26px 28px;box-shadow:0 30px 80px rgba(0,0,0,.5);text-align:center}
+  .sheet h1{margin:0 0 4px;font-size:26px;letter-spacing:.03em}
+  .sheet h1 b{color:var(--gold)}
+  .sheet .kick{font-size:11px;letter-spacing:.22em;color:var(--teal);margin-bottom:10px}
+  .sheet p{color:var(--dim);font-size:13.5px;line-height:1.6;margin:8px 0}
+  .sheet .howto{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;text-align:left;font-size:12.5px;color:var(--dim);margin:14px 0}
+  .sheet .howto b{color:var(--ink)}
+  .btn{cursor:pointer;border:none;border-radius:999px;padding:12px 26px;font-size:15px;font-weight:700;letter-spacing:.04em;
+    background:linear-gradient(90deg,var(--gold),#ffcf6b);color:#23180a;box-shadow:0 8px 24px rgba(245,185,63,.35)}
+  .btn.ghost{background:transparent;color:var(--teal);border:1px solid var(--line);box-shadow:none;font-weight:600}
+  .btnrow{display:flex;gap:10px;justify-content:center;margin-top:16px;flex-wrap:wrap}
+  #loadbar{height:10px;border-radius:99px;background:rgba(255,255,255,.10);overflow:hidden;margin:16px 0 6px}
+  #loadbar>i{display:block;height:100%;width:0%;background:linear-gradient(90deg,var(--teal),var(--gold));transition:width .2s}
+  #loadmsg{font-size:12px;color:var(--dim);min-height:16px}
+  #resultStars{font-size:34px;color:var(--gold);letter-spacing:6px}
+  .statgrid{display:flex;gap:10px;justify-content:center;margin:12px 0}
+  .stat{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:12px;padding:8px 14px;min-width:86px}
+  .stat .v{font-size:18px;font-weight:700}
+  .stat .k{font-size:10px;color:var(--dim);letter-spacing:.1em}
+  .hidden{display:none!important}
+  #flash{position:fixed;inset:0;background:radial-gradient(ellipse at center,transparent 40%,rgba(255,80,60,.35));opacity:0;pointer-events:none;z-index:7;transition:opacity .12s}
+  footer{position:fixed;left:12px;bottom:12px;z-index:4;font-size:10.5px;color:rgba(157,184,201,.75)}
+  @media (max-width:760px){ #mission{width:200px} #hud{display:none} .sheet .howto{grid-template-columns:1fr} }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="scene"></div>
+<div class="vignette"></div>
+<div id="flash"></div>
+
+<header>
+  <div>
+    <div class="brand">OPEN<b>GRASP</b> · EXPEDITION</div>
+    <div class="tag">MuJoCo physics · Franka Panda 7-DOF · prototype v2</div>
+  </div>
+  <a href="../index.html">Research Mode (v1) →</a>
+</header>
+
+<div class="card" id="mission">
+  <h2>Rescue the Relic</h2>
+  <div class="sub">The golden idol is fragile. Lift it gently, slip past the Guardian, and set it in the vault cradle.</div>
+  <ul id="steps">
+    <li data-step="reach">Reach the relic</li>
+    <li data-step="grasp">Grasp it — hold <b>Space</b></li>
+    <li data-step="carry">Carry it gently past the Guardian</li>
+    <li data-step="place">Release it in the vault</li>
+  </ul>
+  <div class="row"><span>Relic integrity</span><b id="integrityVal">100%</b></div>
+  <div class="meter" id="integrityMeter"><i></i></div>
+  <div id="guardianNote">The Guardian sleeps… for now.</div>
+</div>
+
+<div class="card" id="hud">
+  <div class="lab">TIME</div>
+  <div class="big" id="timer">0.0s</div>
+  <div id="stars"></div>
+  <div class="lab" id="scoreLab">PAR 75s</div>
+</div>
+
+<div id="toast"></div>
+
+<div id="controls">
+  <span class="kb"><b>W A S D</b> move</span>
+  <span class="kb"><b>Drag gripper</b> move</span>
+  <span class="kb"><b>Wheel / R F</b> raise · lower</span>
+  <span class="kb"><b>Space</b> grip (hold)</span>
+  <span class="kb"><b>Q E</b> rotate wrist</span>
+  <span class="kb"><b>Shift</b> precision</span>
+  <button class="tbtn" id="camBtn">⟲ Camera</button>
+  <button class="tbtn" id="resetBtn">↺ Reset</button>
+</div>
+
+<div id="touch">
+  <button class="tbtn" id="upBtn">▲ Raise</button>
+  <button class="tbtn" id="gripBtn">✊ Grip</button>
+  <button class="tbtn" id="downBtn">▼ Lower</button>
+</div>
+
+<footer>Every expedition is recorded as a robot trajectory — playing well literally trains robots. Prototype: expect rough edges.</footer>
+
+<div class="overlay" id="loading">
+  <div class="sheet">
+    <div class="kick">OPENGRASP EXPEDITION</div>
+    <h1>Waking the <b>Golem Crane</b>…</h1>
+    <p>Loading real physics (MuJoCo), a Franka Panda arm, and one very fragile relic.</p>
+    <div id="loadbar"><i></i></div>
+    <div id="loadmsg">Starting…</div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="intro">
+  <div class="sheet">
+    <div class="kick">EXPEDITION 01 · THE SUNKEN SHRINE</div>
+    <h1>Rescue the <b>Relic</b></h1>
+    <p>A golden idol rests on a cracked pedestal. Your golem crane is the only way out —
+       but the idol cracks if you slam it around, and the moment you lift it, the Guardian wakes.</p>
+    <div class="howto">
+      <div><b>W A S D</b> — glide the gripper</div>
+      <div><b>Mouse drag</b> — pull the glowing gripper</div>
+      <div><b>Wheel / R · F</b> — raise / lower</div>
+      <div><b>Space (hold)</b> — close the gripper</div>
+      <div><b>Q · E</b> — rotate the wrist</div>
+      <div><b>Shift</b> — precision mode</div>
+    </div>
+    <p style="font-size:12px">Gentle is fast: your score rewards smooth, careful carries. Every run is recorded as training data.</p>
+    <div class="btnrow"><button class="btn" id="beginBtn">Begin Expedition</button></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="result">
+  <div class="sheet">
+    <div class="kick" id="resultKick">EXPEDITION COMPLETE</div>
+    <div id="resultStars">★★★</div>
+    <h1 id="resultTitle">The relic is safe.</h1>
+    <div class="statgrid">
+      <div class="stat"><div class="v" id="stQuality">0</div><div class="k">QUALITY</div></div>
+      <div class="stat"><div class="v" id="stTime">0s</div><div class="k">TIME</div></div>
+      <div class="stat"><div class="v" id="stIntegrity">0%</div><div class="k">INTEGRITY</div></div>
+      <div class="stat"><div class="v" id="stPoints">0</div><div class="k">POINTS</div></div>
+    </div>
+    <p id="resultNote" style="font-size:12.5px"></p>
+    <div class="btnrow">
+      <button class="btn" id="againBtn">Play Again</button>
+      <button class="btn ghost" id="dlBtn">Download Expedition Log</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

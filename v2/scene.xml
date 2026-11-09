@@ -1,0 +1,93 @@
+<mujoco model="opengrasp_rescue_relic">
+  <include file="panda.xml"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.35 0.35 0.35" specular="0 0 0"/>
+    <rgba haze="0.05 0.08 0.14 1"/>
+    <global azimuth="125" elevation="-22"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.10 0.16 0.28" rgb2="0.01 0.02 0.05" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.13 0.16 0.22" rgb2="0.08 0.10 0.15" markrgb="0.5 0.6 0.7" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="6 6" reflectance="0.15"/>
+    <material name="stone" rgba="0.46 0.48 0.54 1" shininess="0.15" specular="0.3"/>
+    <material name="darkstone" rgba="0.23 0.25 0.32 1" shininess="0.1" specular="0.2"/>
+    <material name="gold" rgba="1.0 0.72 0.25 1" shininess="0.7" specular="0.9"/>
+    <material name="goldsoft" rgba="0.85 0.58 0.20 1" shininess="0.5" specular="0.6"/>
+    <material name="tealglow" rgba="0.10 0.95 0.82 1" shininess="0.9" specular="0.9"/>
+    <material name="gem" rgba="0.15 0.85 0.95 1" shininess="0.95" specular="1"/>
+    <material name="wood" rgba="0.42 0.28 0.16 1" shininess="0.2" specular="0.2"/>
+    <material name="bannerred" rgba="0.55 0.13 0.22 1" shininess="0.1" specular="0.1"/>
+    <material name="bannerteal" rgba="0.08 0.38 0.44 1" shininess="0.1" specular="0.1"/>
+    <material name="flame" rgba="1.0 0.55 0.15 1" shininess="0.9" specular="0.5"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0.4 -0.6 1.6" dir="-0.3 0.4 -1" directional="true"/>
+    <light pos="-0.6 0.5 1.2" dir="0.4 -0.3 -1"/>
+
+    <!-- Ground and the great stone dais (top surface at z = 0.10) -->
+    <geom name="floor" type="plane" size="0 0 0.05" material="groundplane"/>
+    <geom name="dais" type="box" pos="-0.05 0 0.05" size="0.85 0.62 0.05" material="darkstone" friction="1.2 0.02 0.002"/>
+    <geom name="dais_trim_front" type="box" pos="-0.05 0.615 0.085" size="0.85 0.012 0.015" material="goldsoft" contype="0" conaffinity="0"/>
+    <geom name="dais_trim_back" type="box" pos="-0.05 -0.615 0.085" size="0.85 0.012 0.015" material="goldsoft" contype="0" conaffinity="0"/>
+
+    <!-- Corner pillars, banners and torches (visual set dressing) -->
+    <geom type="cylinder" pos="-0.80 0.55 0.36" size="0.055 0.26" material="stone" contype="0" conaffinity="0"/>
+    <geom type="cylinder" pos="-0.80 -0.55 0.36" size="0.055 0.26" material="stone" contype="0" conaffinity="0"/>
+    <geom type="cylinder" pos="0.72 0.55 0.36" size="0.055 0.26" material="stone" contype="0" conaffinity="0"/>
+    <geom type="cylinder" pos="0.72 -0.55 0.36" size="0.055 0.26" material="stone" contype="0" conaffinity="0"/>
+    <geom type="sphere" pos="-0.80 0.55 0.66" size="0.035" material="flame" contype="0" conaffinity="0"/>
+    <geom type="sphere" pos="-0.80 -0.55 0.66" size="0.035" material="flame" contype="0" conaffinity="0"/>
+    <geom type="sphere" pos="0.72 0.55 0.66" size="0.035" material="flame" contype="0" conaffinity="0"/>
+    <geom type="sphere" pos="0.72 -0.55 0.66" size="0.035" material="flame" contype="0" conaffinity="0"/>
+    <geom type="box" pos="-0.80 -0.50 0.44" size="0.012 0.055 0.14" material="bannerred" contype="0" conaffinity="0"/>
+    <geom type="box" pos="0.72 0.50 0.44" size="0.012 0.055 0.14" material="bannerteal" contype="0" conaffinity="0"/>
+
+    <!-- Start pedestal for the relic -->
+    <geom name="pedestal" type="cylinder" pos="0.05 -0.30 0.15" size="0.085 0.05" material="stone" friction="1.0 0.02 0.002"/>
+    <geom type="cylinder" pos="0.05 -0.30 0.205" size="0.055 0.006" material="goldsoft" contype="0" conaffinity="0"/>
+    <geom type="box" pos="-0.015 -0.30 0.215" size="0.006 0.030 0.012" material="stone" contype="0" conaffinity="0"/>
+    <geom type="box" pos="0.115 -0.30 0.215" size="0.006 0.030 0.012" material="stone" contype="0" conaffinity="0"/>
+    <geom type="box" pos="0.05 -0.365 0.215" size="0.030 0.006 0.012" material="stone" contype="0" conaffinity="0"/>
+    <geom type="box" pos="0.05 -0.235 0.215" size="0.030 0.006 0.012" material="stone" contype="0" conaffinity="0"/>
+
+    <!-- Vault cradle: the relic's destination -->
+    <geom name="vault_base" type="cylinder" pos="0.26 0.28 0.13" size="0.11 0.03" material="stone" friction="1.0 0.02 0.002" solref="0.004 1" solimp="0.9 0.99 0.001"/>
+    <geom type="cylinder" pos="0.26 0.28 0.165" size="0.075 0.006" material="goldsoft" contype="0" conaffinity="0"/>
+    <geom type="box" pos="0.165 0.28 0.185" size="0.010 0.030 0.028" material="darkstone"/>
+    <geom type="box" pos="0.355 0.28 0.185" size="0.010 0.030 0.028" material="darkstone"/>
+    <geom type="box" pos="0.26 0.185 0.185" size="0.030 0.010 0.028" material="darkstone"/>
+    <geom type="box" pos="0.26 0.375 0.185" size="0.030 0.010 0.028" material="darkstone"/>
+
+    <!-- Guardian beam and its sliding stone totem (the moving obstacle) -->
+    <geom type="box" pos="0.30 0.52 0.42" size="0.045 0.05 0.32" material="darkstone"/>
+    <geom type="box" pos="0.30 -0.52 0.42" size="0.045 0.05 0.32" material="darkstone"/>
+    <geom type="box" pos="0.30 0 0.78" size="0.045 0.57 0.045" material="darkstone"/>
+    <body name="guardian" pos="0.30 0 0.60">
+      <joint name="guardian_slide" type="slide" axis="0 1 0" range="-0.32 0.50" damping="2"/>
+      <inertial mass="2.2" pos="0 0 0" diaginertia="0.05 0.05 0.05"/>
+      <geom name="guardian_block" type="box" size="0.055 0.070 0.130" material="stone" friction="0.8 0.02 0.002"/>
+      <geom type="box" pos="0 0 0.02" size="0.058 0.073 0.018" material="goldsoft" contype="0" conaffinity="0"/>
+      <geom type="sphere" pos="0 0 -0.155" size="0.028" material="flame" contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- The Golden Relic: a fragile idol canister, graspable, physics-driven -->
+    <body name="relic" pos="0.05 -0.30 0.238">
+      <joint name="relic_joint" type="free"/>
+      <inertial mass="0.12" pos="0 0 0" diaginertia="0.00012 0.00012 0.00008"/>
+      <geom name="relic_body" type="cylinder" size="0.030 0.0375" material="gold" friction="1.15 0.03 0.003" solref="0.004 1" solimp="0.9 0.99 0.001"/>
+      <geom type="cylinder" pos="0 0 0.040" size="0.020 0.004" material="goldsoft" contype="0" conaffinity="0"/>
+      <geom type="sphere" pos="0 0 0.052" size="0.012" material="gem" contype="0" conaffinity="0"/>
+      <geom type="sphere" pos="0.024 0 0.030" size="0.006" material="gold" contype="0" conaffinity="0"/>
+      <geom type="sphere" pos="-0.024 0 0.030" size="0.006" material="gold" contype="0" conaffinity="0"/>
+      <geom type="sphere" pos="0 0.024 0.030" size="0.006" material="gold" contype="0" conaffinity="0"/>
+      <geom type="sphere" pos="0 -0.024 0.030" size="0.006" material="gold" contype="0" conaffinity="0"/>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <position name="guardian_act" joint="guardian_slide" kp="300" kv="30" ctrlrange="-0.32 0.50"/>
+  </actuator>
+</mujoco>

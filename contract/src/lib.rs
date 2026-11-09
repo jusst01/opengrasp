@@ -1,5 +1,6 @@
 // OpenGrasp policy contract — NEAR testnet, v0 draft.
-// Implements contract/README.md + POLICY.md exactly. No token: rewards are NEAR.
+// Implements contract/README.md + POLICY.md exactly. No native token is part
+// of v0: rewards and dataset licensing are settled in NEAR.
 // Points are an accounting unit; conversion rates are public constants on-chain.
 //
 // STATUS (2026-11-06): written from the design doc, NOT yet compiled — this VM has
@@ -61,7 +62,7 @@ pub struct Policy {
     pub split_ops_bps: u16,
     pub accept_threshold: u8,
     pub base_points: BasePoints,
-    pub has_token: bool,
+    pub native_token_live: bool,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Clone)]
@@ -261,7 +262,7 @@ impl Contract {
                 stack_two: BASE_POINTS_STACK_TWO,
                 colour_sort: BASE_POINTS_COLOUR_SORT,
             },
-            has_token: false,
+            native_token_live: false,
         }
     }
 
