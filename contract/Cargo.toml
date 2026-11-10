@@ -8,6 +8,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 near-sdk = "5"
+borsh = "1"
 
 [profile.release]
 codegen-units = 1
@@ -16,3 +17,6 @@ lto = true
 debug = false
 panic = "abort"
 overflow-checks = true
+
+[dev-dependencies]
+near-sdk = { version = "5", features = ["unit-testing"] }

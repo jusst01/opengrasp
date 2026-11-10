@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenGrasp — One-Click Contract Deploy (NEAR Testnet)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@near-wallet-selector/modal-ui-js@8.9.3/styles.css">
+<style>
+  :root { --bg:#f4f2ec; --ink:#111111; --accent:#0891b2; --grey:#6f6c62; --card:#fffdf7; --line:#ddd8cc; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 40px 20px 64px; }
+  .kick { font-family: "Noto Sans Mono", ui-monospace, monospace; font-size: 12px; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; }
+  h1 { font-size: 40px; line-height: 1.05; margin: 10px 0 8px; font-weight: 900; letter-spacing: -0.01em; }
+  .sub { color: var(--grey); font-size: 16px; line-height: 1.5; margin: 0 0 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; margin-bottom: 16px; }
+  .card h2 { margin: 0 0 10px; font-size: 17px; }
+  .kv { font-family: ui-monospace, monospace; font-size: 13.5px; line-height: 1.9; word-break: break-all; }
+  .kv b { color: var(--accent); }
+  button { background: var(--ink); color: #fff; border: 0; border-radius: 10px; padding: 13px 22px; font-size: 15.5px; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.accent { background: var(--accent); }
+  button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  #log { font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.85; white-space: pre-wrap; word-break: break-word; }
+  #log .ok { color: #15803d; } #log .err { color: #b91c1c; } #log .dim { color: var(--grey); }
+  .warn { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.5; }
+  textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 12.5px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  a { color: var(--accent); }
+  .hidden { display: none; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="kick">OpenGrasp · NEAR Testnet</div>
+  <h1>Deploy the policy contract.<br>One wallet approval.</h1>
+  <p class="sub">This page creates the subaccount <b>opengrasp.jusst1.testnet</b> (funded with 1 NEAR from your account),
+  deploys the OpenGrasp policy contract, and initializes it with you as owner, treasury and ops.
+  Your seed phrase never leaves your wallet — you only approve one transaction in Meteor.</p>
+
+  <div class="card">
+    <h2>Contract</h2>
+    <div class="kv">
+      Account: <b>opengrasp.jusst1.testnet</b><br>
+      Parent / owner: <b>jusst1.testnet</b><br>
+      WASM: opengrasp_policy.wasm · sha256 5be3f766…0d5402<br>
+      Policy: split 70% contributors / 20% treasury / 10% ops · quality ≥ 60 accepted · no native token
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Step 1 — Connect</h2>
+    <div class="row">
+      <button id="connectBtn">Connect Wallet</button>
+      <button id="disconnectBtn" class="ghost hidden">Disconnect</button>
+      <span id="connState" class="kv">Not connected.</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Step 2 — Deploy</h2>
+    <div class="row">
+      <button id="deployBtn" class="accent" disabled>Deploy OpenGrasp Contract</button>
+    </div>
+    <div id="wrongAccount" class="warn hidden" style="margin-top:12px">
+      You are connected with a different account. Please connect with <b>jusst1.testnet</b> — only the parent account can create its subaccount.
+    </div>
+    <div id="log" style="margin-top:14px"></div>
+  </div>
+
+  <div class="card hidden" id="doneCard">
+    <h2>✅ Deployed</h2>
+    <div class="kv" id="doneInfo"></div>
+    <p style="font-size:14px;line-height:1.5">Save this contract-account key if you want to redeploy or update the contract later.
+    Whoever holds it controls <b>opengrasp.jusst1.testnet</b> (testnet). It was generated in your browser and never sent anywhere.</p>
+    <textarea id="keyBox" rows="3" readonly></textarea>
+  </div>
+
+  <p class="sub" style="font-size:13px">Source: <a href="https://github.com/jusst01/opengrasp" target="_blank" rel="noopener">github.com/jusst01/opengrasp</a> · Contract source in <span class="kv">contract/src/lib.rs</span></p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/near-api-js@4.0.4/dist/near-api-js.min.js"></script>
+<script type="module">
+import { setupWalletSelector } from "https://cdn.jsdelivr.net/npm/@near-wallet-selector/core@8.9.3/+esm";
+import { setupModal } from "https://cdn.jsdelivr.net/npm/@near-wallet-selector/modal-ui-js@8.9.3/+esm";
+import { setupMeteorWallet } from "https://cdn.jsdelivr.net/npm/@near-wallet-selector/meteor-wallet@8.9.3/+esm";
+import { setupMyNearWallet } from "https://cdn.jsdelivr.net/npm/@near-wallet-selector/my-near-wallet@8.9.3/+esm";
+
+const PARENT = "jusst1.testnet";
+const CONTRACT = "opengrasp.jusst1.testnet";
+const RPC = "https://rpc.testnet.fastnear.com";
+const WASM_URL = "./opengrasp_policy.wasm";
+const FUNDING = "1000000000000000000000000"; // 1 NEAR
+const EMPTY_CODE_HASH = "11111111111111111111111111111111";
+
+const $ = (id) => document.getElementById(id);
+const logEl = $("log");
+function log(msg, cls) {
+  const div = document.createElement("div");
+  if (cls) div.className = cls;
+  div.textContent = msg;
+  logEl.appendChild(div);
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const provider = new nearApi.providers.JsonRpcProvider({ url: RPC });
+
+async function viewAccount(id) {
+  try {
+    return await provider.query({ request_type: "view_account", account_id: id, finality: "optimistic" });
+  } catch (e) { return null; }
+}
+
+let selector, modal, wallet = null, accountId = null;
+
+function render() {
+  $("connState").textContent = accountId ? `Connected: ${accountId}` : "Not connected.";
+  $("connectBtn").classList.toggle("hidden", !!accountId);
+  $("disconnectBtn").classList.toggle("hidden", !accountId);
+  const wrong = !!accountId && accountId !== PARENT;
+  $("wrongAccount").classList.toggle("hidden", !wrong);
+  $("deployBtn").disabled = !accountId || wrong;
+}
+
+async function init() {
+  selector = await setupWalletSelector({
+    network: "testnet",
+    modules: [setupMeteorWallet(), setupMyNearWallet()],
+  });
+  modal = setupModal(selector, { description: "Deploy the OpenGrasp policy contract (testnet)." });
+  selector.store.observable.subscribe(async (state) => {
+    const active = state.accounts.find((a) => a.active) || state.accounts[0];
+    accountId = active ? active.accountId : null;
+    wallet = accountId ? await selector.wallet() : null;
+    render();
+  });
+  render();
+}
+
+$("connectBtn").addEventListener("click", () => modal.show());
+$("disconnectBtn").addEventListener("click", async () => { if (wallet) await wallet.signOut(); });
+
+async function deploy() {
+  $("deployBtn").disabled = true;
+  logEl.innerHTML = "";
+  try {
+    // 0. Does the contract account already exist / have code?
+    let acct = await viewAccount(CONTRACT);
+    if (acct && acct.code_hash !== EMPTY_CODE_HASH) {
+      log("Contract account already exists AND already has code deployed.", "ok");
+      await showPolicy();
+      log("Nothing to do — deployment already complete.", "ok");
+      return;
+    }
+
+    const kp = nearApi.KeyPair.fromRandom("ed25519");
+
+    // 1. Create the subaccount from the parent via the wallet (skipped if it exists without code).
+    if (!acct) {
+      log("Step 1/3 — approve ONE transaction in your wallet: create " + CONTRACT + " + fund 1 NEAR + add deploy key…");
+      await wallet.signAndSendTransactions({
+        transactions: [{
+          signerId: PARENT,
+          receiverId: CONTRACT,
+          actions: [
+            { type: "CreateAccount" },
+            { type: "Transfer", params: { deposit: FUNDING } },
+            { type: "AddKey", params: { publicKey: kp.getPublicKey().toString(), accessKey: { permission: "FullAccess" } } },
+          ],
+        }],
+      });
+      log("Subaccount created.", "ok");
+      for (let i = 0; i < 20 && !acct; i++) { await sleep(1500); acct = await viewAccount(CONTRACT); }
+      if (!acct) throw new Error("Subaccount did not appear on-chain in time — check the wallet transaction, then reload and retry.");
+    } else {
+      log("Subaccount already exists without code — continuing. NOTE: this run generates a fresh key below; if the account's key differs, deploy will fail and the CLI route is needed.", "dim");
+    }
+
+    // 2. Deploy + initialize, signed locally by the freshly generated contract-account key.
+    log("Step 2/3 — deploying WASM + initializing (signed by the new contract key, no wallet popup)…");
+    const keyStore = new nearApi.keyStores.InMemoryKeyStore();
+    await keyStore.setKey("testnet", CONTRACT, kp);
+    const conn = new nearApi.Connection("testnet", provider, new nearApi.InMemorySigner(keyStore));
+    const contractAcct = new nearApi.Account(conn, CONTRACT);
+    const wasmBytes = new Uint8Array(await (await fetch(WASM_URL)).arrayBuffer());
+    log("WASM loaded: " + wasmBytes.length + " bytes.", "dim");
+    const initArgs = new TextEncoder().encode(JSON.stringify({ owner: PARENT, treasury: PARENT, ops: PARENT }));
+    const outcome = await contractAcct.signAndSendTransaction({
+      receiverId: CONTRACT,
+      actions: [
+        nearApi.transactions.deployContract(wasmBytes),
+        nearApi.transactions.functionCall("new", initArgs, "30000000000000", "0"),
+      ],
+    });
+    log("Deploy tx: " + outcome.transaction.hash, "ok");
+
+    // 3. Verify by calling get_policy.
+    log("Step 3/3 — verifying get_policy() on-chain…");
+    await showPolicy();
+    $("doneInfo").innerHTML =
+      "Contract: <b>" + CONTRACT + "</b><br>" +
+      "Explorer: <a href='https://testnet.nearblocks.io/address/" + CONTRACT + "' target='_blank' rel='noopener'>testnet.nearblocks.io/address/" + CONTRACT + "</a>";
+    $("keyBox").value = kp.toString();
+    $("doneCard").classList.remove("hidden");
+    log("🎉 DONE — OpenGrasp policy contract is live on NEAR testnet.", "ok");
+  } catch (e) {
+    log("ERROR: " + (e && e.message ? e.message : String(e)), "err");
+    $("deployBtn").disabled = false;
+  }
+}
+
+async function showPolicy() {
+  for (let i = 0; i < 10; i++) {
+    try {
+      const res = await provider.query({
+        request_type: "call_function", account_id: CONTRACT, method_name: "get_policy",
+        args_base64: "e30=", finality: "optimistic",
+      });
+      const policy = JSON.parse(new TextDecoder().decode(new Uint8Array(res.result)));
+      log("get_policy() → split " + policy.split_contributors_bps / 100 + "%/" + policy.split_treasury_bps / 100 + "%/" +
+          policy.split_ops_bps / 100 + "%, threshold " + policy.accept_threshold +
+          ", base points " + policy.base_points.pick_place + "/" + policy.base_points.stack_two + "/" +
+          policy.base_points.colour_sort + ", native_token_live=" + policy.native_token_live, "ok");
+      return;
+    } catch (e) { await sleep(1500); }
+  }
+  log("get_policy() not answering yet — the deploy may still be finalizing; verify on the explorer link.", "dim");
+}
+
+$("deployBtn").addEventListener("click", deploy);
+init().catch((e) => log("Init error: " + e.message, "err"));
+</script>
+</body>
+</html>

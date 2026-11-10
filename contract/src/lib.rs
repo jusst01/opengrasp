@@ -3,9 +3,11 @@
 // of v0: rewards and dataset licensing are settled in NEAR.
 // Points are an accounting unit; conversion rates are public constants on-chain.
 //
-// STATUS (2026-11-06): written from the design doc, NOT yet compiled — this VM has
-// no Rust toolchain. Compile with `cargo near build` (cargo-near) on a machine with
-// Rust, then deploy to testnet. Deploy needs the payout account Jallu must create
+// STATUS (2026-11-10): COMPILES clean (release WASM, 373,131 bytes) after two
+// porting fixes for current near-sdk 5.x: borsh added as a direct dependency
+// (its derive macros panic otherwise) and store-collection reads adapted to
+// the Option<&V> API (.cloned() where an owned value is mutated/re-inserted).
+// Deploy needs the payout account Jallu must create
 // (owner / treasury / ops all take that account at first deploy; they can be
 // re-pointed later by the owner, one explicit call each, so the change is public).
 // v0 trusts the submitted quality score (formula is deterministic and public, so
@@ -153,7 +155,7 @@ impl Contract {
         require!(!episode_ids.is_empty(), "No episodes");
         let mut total: u64 = 0;
         for id in &episode_ids {
-            let mut ep = self.episodes.get(id).expect("Episode not found");
+            let mut ep = self.episodes.get(id).expect("Episode not found").clone();
             require!(ep.accepted, "Episode not accepted");
             require!(ep.dataset_version.is_none(), "Episode already in a dataset");
             total += ep.points;
@@ -181,7 +183,7 @@ impl Contract {
     pub fn license_dataset(&mut self, version: u32) {
         let payment = env::attached_deposit();
         require!(payment.as_yoctonear() > 0, "Payment required");
-        let mut ds = self.datasets.get(&version).expect("Dataset not found");
+        let mut ds = self.datasets.get(&version).expect("Dataset not found").clone();
         require!(ds.total_weighted_points > 0, "Dataset has no points");
         let contributors_amt =
             payment.as_yoctonear() * SPLIT_CONTRIBUTORS_BPS as u128 / 10_000;
@@ -267,7 +269,7 @@ impl Contract {
     }
 
     pub fn get_episode(&self, id: u64) -> Option<Episode> {
-        self.episodes.get(&id)
+        self.episodes.get(&id).cloned()
     }
 
     pub fn get_points(&self, account: AccountId) -> u64 {
@@ -282,10 +284,78 @@ impl Contract {
     }
 
     pub fn get_dataset(&self, version: u32) -> Option<DatasetVersion> {
-        self.datasets.get(&version)
+        self.datasets.get(&version).cloned()
     }
 
     pub fn get_owner(&self) -> AccountId {
         self.owner.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use near_sdk::test_utils::VMContextBuilder;
+    use near_sdk::testing_env;
+
+    fn alice_ctx() -> VMContextBuilder {
+        let mut b = VMContextBuilder::new();
+        b.predecessor_account_id("alice.testnet".parse().unwrap())
+            .current_account_id("opengrasp.jusst1.testnet".parse().unwrap());
+        b
+    }
+
+    fn fresh() -> Contract {
+        Contract::new(
+            "jusst1.testnet".parse().unwrap(),
+            "jusst1.testnet".parse().unwrap(),
+            "jusst1.testnet".parse().unwrap(),
+        )
+    }
+
+    #[test]
+    fn policy_constants_match_policy_md() {
+        testing_env!(alice_ctx().build());
+        let c = fresh();
+        let p = c.get_policy();
+        assert_eq!(p.split_contributors_bps, 7000);
+        assert_eq!(p.split_treasury_bps, 2000);
+        assert_eq!(p.split_ops_bps, 1000);
+        assert_eq!(p.accept_threshold, 60);
+        assert_eq!(p.base_points.pick_place, 100);
+        assert_eq!(p.base_points.stack_two, 200);
+        assert_eq!(p.base_points.colour_sort, 250);
+        assert!(!p.native_token_live);
+    }
+
+    #[test]
+    fn register_episode_points_math_and_threshold() {
+        testing_env!(alice_ctx().build());
+        let mut c = fresh();
+        // quality 80 on stack_two (base 200) -> 160 points, accepted
+        let id0 = c.register_episode("stack_two".into(), 80, "hash-a".into());
+        assert_eq!(id0, 0);
+        assert_eq!(c.get_points("alice.testnet".parse().unwrap()), 160);
+        let ep0 = c.get_episode(0).unwrap();
+        assert!(ep0.accepted);
+        assert_eq!(ep0.points, 160);
+        // quality 59 on pick_place -> below threshold: recorded, 0 points
+        let id1 = c.register_episode("pick_place".into(), 59, "hash-b".into());
+        assert_eq!(id1, 1);
+        assert_eq!(c.get_points("alice.testnet".parse().unwrap()), 160);
+        let ep1 = c.get_episode(1).unwrap();
+        assert!(!ep1.accepted);
+        assert_eq!(ep1.points, 0);
+        // exactly at threshold 60 on colour_sort (base 250) -> 150 points
+        c.register_episode("colour_sort".into(), 60, "hash-c".into());
+        assert_eq!(c.get_points("alice.testnet".parse().unwrap()), 310);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unknown task_id")]
+    fn register_episode_rejects_unknown_task() {
+        testing_env!(alice_ctx().build());
+        let mut c = fresh();
+        c.register_episode("nope".into(), 90, "hash-x".into());
     }
 }
