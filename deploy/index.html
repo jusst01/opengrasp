@@ -24,7 +24,6 @@
   #log { font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.85; white-space: pre-wrap; word-break: break-word; }
   #log .ok { color: #15803d; } #log .err { color: #b91c1c; } #log .dim { color: var(--grey); }
   .warn { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.5; }
-  textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 12.5px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
   a { color: var(--accent); }
   .hidden { display: none; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
@@ -34,9 +33,10 @@
 <div class="wrap">
   <div class="kick">OpenGrasp · NEAR Testnet</div>
   <h1>Deploy the policy contract.<br>One wallet approval.</h1>
-  <p class="sub">This page creates the subaccount <b>opengrasp.jusst1.testnet</b> (funded with 1 NEAR from your account),
-  deploys the OpenGrasp policy contract, and initializes it with you as owner, treasury and ops.
-  Your seed phrase never leaves your wallet — you only approve one transaction in Meteor.</p>
+  <p class="sub">One transaction from your account does everything: creates the subaccount <b>opengrasp.jusst1.testnet</b>
+  (funded with 2 NEAR), deploys the OpenGrasp policy contract onto it, and initializes it with you as owner, treasury and ops.
+  No access key is ever requested — the contract account is created keyless, so the deployment is immutable;
+  administration happens through the contract's owner methods, signed by <b>jusst1.testnet</b>.</p>
 
   <div class="card">
     <h2>Contract</h2>
@@ -71,9 +71,8 @@
   <div class="card hidden" id="doneCard">
     <h2>✅ Deployed</h2>
     <div class="kv" id="doneInfo"></div>
-    <p style="font-size:14px;line-height:1.5">Save this contract-account key if you want to redeploy or update the contract later.
-    Whoever holds it controls <b>opengrasp.jusst1.testnet</b> (testnet). It was generated in your browser and never sent anywhere.</p>
-    <textarea id="keyBox" rows="3" readonly></textarea>
+    <p style="font-size:14px;line-height:1.5">The contract account holds no access key by design — nobody can upgrade, move or delete it.
+    Day-to-day administration (treasury / ops changes) is done by calling the contract's owner methods from <b>jusst1.testnet</b>.</p>
   </div>
 
   <p class="sub" style="font-size:13px">Source: <a href="https://github.com/jusst01/opengrasp" target="_blank" rel="noopener">github.com/jusst01/opengrasp</a> · Contract source in <span class="kv">contract/src/lib.rs</span></p>
@@ -90,8 +89,9 @@ const PARENT = "jusst1.testnet";
 const CONTRACT = "opengrasp.jusst1.testnet";
 const RPC = "https://rpc.testnet.fastnear.com";
 const WASM_URL = "./opengrasp_policy.wasm";
-const FUNDING = "1000000000000000000000000"; // 1 NEAR
+const FUNDING = "2000000000000000000000000"; // 2 NEAR
 const EMPTY_CODE_HASH = "11111111111111111111111111111111";
+const INIT_ARGS = { owner: PARENT, treasury: PARENT, ops: PARENT };
 
 const $ = (id) => document.getElementById(id);
 const logEl = $("log");
@@ -109,6 +109,15 @@ async function viewAccount(id) {
   try {
     return await provider.query({ request_type: "view_account", account_id: id, finality: "optimistic" });
   } catch (e) { return null; }
+}
+
+async function waitForCode(maxTries) {
+  for (let i = 0; i < maxTries; i++) {
+    const a = await viewAccount(CONTRACT);
+    if (a && a.code_hash !== EMPTY_CODE_HASH) return true;
+    await sleep(1500);
+  }
+  return false;
 }
 
 let selector, modal, wallet = null, accountId = null;
@@ -140,24 +149,34 @@ async function init() {
 $("connectBtn").addEventListener("click", () => modal.show());
 $("disconnectBtn").addEventListener("click", async () => { if (wallet) await wallet.signOut(); });
 
+function initCallAction() {
+  return { type: "FunctionCall", params: { methodName: "new", args: INIT_ARGS, gas: "30000000000000", deposit: "0" } };
+}
+
 async function deploy() {
   $("deployBtn").disabled = true;
   logEl.innerHTML = "";
   try {
-    // 0. Does the contract account already exist / have code?
-    let acct = await viewAccount(CONTRACT);
-    if (acct && acct.code_hash !== EMPTY_CODE_HASH) {
+    const existing = await viewAccount(CONTRACT);
+    if (existing && existing.code_hash !== EMPTY_CODE_HASH) {
       log("Contract account already exists AND already has code deployed.", "ok");
       await showPolicy();
-      log("Nothing to do — deployment already complete.", "ok");
+      finish();
+      return;
+    }
+    if (existing) {
+      log("The subaccount exists but has no code and no key — it cannot be deployed to. Tell Muse; a fresh subaccount name is the clean fix.", "err");
       return;
     }
 
-    const kp = nearApi.KeyPair.fromRandom("ed25519");
+    log("Loading WASM…");
+    const wasmBytes = new Uint8Array(await (await fetch(WASM_URL)).arrayBuffer());
+    log("WASM loaded: " + wasmBytes.length + " bytes.", "dim");
 
-    // 1. Create the subaccount from the parent via the wallet (skipped if it exists without code).
-    if (!acct) {
-      log("Step 1/3 — approve ONE transaction in your wallet: create " + CONTRACT + " + fund 1 NEAR + add deploy key…");
+    // Attempt 1: everything in ONE wallet transaction — create + fund + deploy + init.
+    log("Approve ONE transaction in your wallet: create + fund 2 NEAR + deploy + initialize…");
+    let combinedOk = false;
+    try {
       await wallet.signAndSendTransactions({
         transactions: [{
           signerId: PARENT,
@@ -165,48 +184,60 @@ async function deploy() {
           actions: [
             { type: "CreateAccount" },
             { type: "Transfer", params: { deposit: FUNDING } },
-            { type: "AddKey", params: { publicKey: kp.getPublicKey().toString(), accessKey: { permission: "FullAccess" } } },
+            { type: "DeployContract", params: { code: wasmBytes } },
+            initCallAction(),
           ],
         }],
       });
-      log("Subaccount created.", "ok");
-      for (let i = 0; i < 20 && !acct; i++) { await sleep(1500); acct = await viewAccount(CONTRACT); }
-      if (!acct) throw new Error("Subaccount did not appear on-chain in time — check the wallet transaction, then reload and retry.");
-    } else {
-      log("Subaccount already exists without code — continuing. NOTE: this run generates a fresh key below; if the account's key differs, deploy will fail and the CLI route is needed.", "dim");
+      combinedOk = true;
+    } catch (e) {
+      log("Combined transaction did not go through (" + (e && e.message ? e.message : e) + "). Trying the split flow…", "dim");
     }
 
-    // 2. Deploy + initialize, signed locally by the freshly generated contract-account key.
-    log("Step 2/3 — deploying WASM + initializing (signed by the new contract key, no wallet popup)…");
-    const keyStore = new nearApi.keyStores.InMemoryKeyStore();
-    await keyStore.setKey("testnet", CONTRACT, kp);
-    const conn = new nearApi.Connection("testnet", provider, new nearApi.InMemorySigner(keyStore));
-    const contractAcct = new nearApi.Account(conn, CONTRACT);
-    const wasmBytes = new Uint8Array(await (await fetch(WASM_URL)).arrayBuffer());
-    log("WASM loaded: " + wasmBytes.length + " bytes.", "dim");
-    const initArgs = new TextEncoder().encode(JSON.stringify({ owner: PARENT, treasury: PARENT, ops: PARENT }));
-    const outcome = await contractAcct.signAndSendTransaction({
-      receiverId: CONTRACT,
-      actions: [
-        nearApi.transactions.deployContract(wasmBytes),
-        nearApi.transactions.functionCall("new", initArgs, "30000000000000", "0"),
-      ],
-    });
-    log("Deploy tx: " + outcome.transaction.hash, "ok");
+    if (combinedOk) {
+      if (await waitForCode(20)) { await showPolicy(); finish(); return; }
+      log("Transaction sent but code not visible yet — checking once more…", "dim");
+      if (await waitForCode(10)) { await showPolicy(); finish(); return; }
+      throw new Error("Deploy transaction completed but no code is on the account. Check the transaction in your wallet / explorer, then tell Muse.");
+    }
 
-    // 3. Verify by calling get_policy.
-    log("Step 3/3 — verifying get_policy() on-chain…");
+    // Attempt 2 (split): create+deploy in one tx, then init as a plain function call from the parent.
+    const afterFail = await viewAccount(CONTRACT);
+    if (!afterFail) {
+      log("Split flow, part 1 — approve: create + fund + deploy (no init)…");
+      await wallet.signAndSendTransactions({
+        transactions: [{
+          signerId: PARENT,
+          receiverId: CONTRACT,
+          actions: [
+            { type: "CreateAccount" },
+            { type: "Transfer", params: { deposit: FUNDING } },
+            { type: "DeployContract", params: { code: wasmBytes } },
+          ],
+        }],
+      });
+      if (!(await waitForCode(20))) throw new Error("Code still not visible after split deploy. Check the explorer, then tell Muse.");
+    }
+    log("Split flow, part 2 — approve: initialize the contract (plain function call)…");
+    await wallet.signAndSendTransaction({
+      signerId: PARENT,
+      receiverId: CONTRACT,
+      actions: [initCallAction()],
+    });
     await showPolicy();
-    $("doneInfo").innerHTML =
-      "Contract: <b>" + CONTRACT + "</b><br>" +
-      "Explorer: <a href='https://testnet.nearblocks.io/address/" + CONTRACT + "' target='_blank' rel='noopener'>testnet.nearblocks.io/address/" + CONTRACT + "</a>";
-    $("keyBox").value = kp.toString();
-    $("doneCard").classList.remove("hidden");
-    log("🎉 DONE — OpenGrasp policy contract is live on NEAR testnet.", "ok");
+    finish();
   } catch (e) {
     log("ERROR: " + (e && e.message ? e.message : String(e)), "err");
     $("deployBtn").disabled = false;
   }
+}
+
+function finish() {
+  $("doneInfo").innerHTML =
+    "Contract: <b>" + CONTRACT + "</b><br>" +
+    "Explorer: <a href='https://testnet.nearblocks.io/address/" + CONTRACT + "' target='_blank' rel='noopener'>testnet.nearblocks.io/address/" + CONTRACT + "</a>";
+  $("doneCard").classList.remove("hidden");
+  log("🎉 DONE — OpenGrasp policy contract is live on NEAR testnet.", "ok");
 }
 
 async function showPolicy() {
