@@ -92,12 +92,40 @@
   .lvl .lrow{display:flex;justify-content:space-between;align-items:center}
   .lvl .btnrow{justify-content:flex-start;margin-top:10px}
   .lvl .btn{padding:9px 18px;font-size:13px}
-  .mapwrap{position:relative;height:520px;margin-top:16px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 100%,rgba(233,196,106,.10),transparent 60%),radial-gradient(80% 60% at 18% 40%,rgba(45,212,191,.07),transparent 60%),radial-gradient(80% 60% at 84% 40%,rgba(45,212,191,.07),transparent 60%),rgba(255,255,255,.02)}
+  #hub{align-items:flex-start;justify-content:center;overflow-y:auto;background:radial-gradient(120% 70% at 50% 0%,rgba(45,212,191,.05),transparent 60%),linear-gradient(180deg,rgba(6,12,20,.99),rgba(4,9,15,.99))}
+  .hubwrap{width:min(1180px,94vw);margin:0 auto;padding:24px 0 42px;text-align:center}
+  .hubhead{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+  .hubbrand{font-size:17px;letter-spacing:.14em;color:var(--ink)}
+  .hubbrand b{color:var(--gold)}
+  .hubchips{display:flex;gap:8px;flex-wrap:wrap}
+  .hchip{font-size:10.5px;letter-spacing:.12em;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:rgba(255,255,255,.03)}
+  .hchip b{color:var(--gold);font-size:12.5px;margin-left:4px}
+  .hubhero{margin-top:30px}
+  .hubhero .kick{font-size:11px;letter-spacing:.22em;color:var(--teal);margin-bottom:10px}
+  .hubhero h1{margin:0 0 6px;font-size:36px;letter-spacing:.02em;color:var(--ink)}
+  .hubhero h1 b{color:var(--gold)}
+  .hubhero p{color:var(--dim);font-size:14px;line-height:1.6;margin:6px auto;max-width:760px}
+  .hubhero .hubrules{font-size:12.5px}
+  .hubgrid{display:grid;grid-template-columns:1.35fr 1fr;gap:14px;margin-top:16px;text-align:left}
+  .hubpanel{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:rgba(255,255,255,.03)}
+  .hubpanel h2{margin:0 0 8px;font-size:13px;letter-spacing:.14em;color:var(--ink)}
+  .hubpanel p{color:var(--dim);font-size:12.5px;line-height:1.6;margin:0}
+  .hubfoot{margin-top:22px;font-size:11.5px;color:var(--dim)}
+  .hubfoot a{color:var(--teal)}
+  .mapwrap{position:relative;height:min(600px,62vh);min-height:520px;margin-top:18px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 100%,rgba(233,196,106,.10),transparent 60%),radial-gradient(80% 60% at 18% 40%,rgba(45,212,191,.07),transparent 60%),radial-gradient(80% 60% at 84% 40%,rgba(45,212,191,.07),transparent 60%),rgba(255,255,255,.02)}
   .mapsvg{position:absolute;inset:0;width:100%;height:100%}
   .mapsvg path{fill:none;stroke:var(--gold);stroke-width:3;stroke-dasharray:10 12;opacity:.55}
   .shrinepin{position:absolute;left:50%;top:90.8%;transform:translate(-50%,-50%);text-align:center;font-size:30px;color:var(--gold)}
   .shrinepin span{display:block;font-size:9.5px;letter-spacing:.22em;color:var(--dim);margin-top:2px}
-  .mapnode{position:absolute;transform:translate(-50%,-50%);width:212px;text-align:center;background:rgba(10,14,20,.82);border:1px solid var(--line);border-radius:14px;padding:10px 10px 12px;backdrop-filter:blur(3px)}
+  .mapnode{position:absolute;transform:translate(-50%,-50%);width:238px;text-align:center;background:rgba(10,14,20,.85);border:1px solid var(--line);border-radius:14px;padding:12px 12px 13px;backdrop-filter:blur(3px)}
+  .nodekick{font-size:9px;letter-spacing:.16em;color:var(--teal);margin-bottom:5px}
+  .nodesub{font-size:11px;color:var(--dim);line-height:1.45;margin-top:5px}
+  @media (max-width:900px){
+    .hubgrid{grid-template-columns:1fr}
+    .mapwrap{height:auto;min-height:0;padding:14px;display:flex;flex-direction:column;gap:12px;align-items:center}
+    .mapsvg,.shrinepin{display:none}
+    .mapnode{position:static;transform:none;width:min(340px,92%)}
+  }
   .mapnode.complete{opacity:.72;border-color:var(--good)}
   .nodebadge{width:44px;height:44px;margin:0 auto 6px;border-radius:50%;border:2px solid var(--gold);color:var(--gold);font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;background:rgba(233,196,106,.08)}
   .mapnode.complete .nodebadge{border-color:var(--good);color:var(--good)}
@@ -199,16 +227,34 @@
 </div>
 
 <div class="overlay hidden" id="hub">
-  <div class="sheet" style="max-width:780px">
-    <div class="kick">THE SUNKEN SHRINE · EXPEDITION MAP</div>
-    <h1>Choose your <b>expedition</b></h1>
-    <p id="hubRestore">The shrine sleeps in ruin. Three tasks await.</p>
-    <p style="font-size:12px">Each site on the map accepts up to <b>5 verified runs</b> per explorer — every certified run
-       starts from a slightly shifted prop position, so no two trajectories are alike. Fail, and nothing is
-       consumed. After the 5th verified run a site is complete; practice is always open and never locks.
-       &nbsp;·&nbsp; Total points: <b id="hubPoints" style="color:var(--gold)">0</b></p>
+  <div class="hubwrap">
+    <header class="hubhead">
+      <div class="hubbrand">⛩ <b>OPENGRASP</b> EXPEDITION</div>
+      <div class="hubchips">
+        <span class="hchip">TOTAL POINTS <b id="hubPoints">0</b></span>
+        <span class="hchip">VERIFIED TRAJECTORIES <b id="hubVerified">0 / 15</b></span>
+        <span class="hchip">STARS <b id="hubStars">0 / 9</b></span>
+      </div>
+    </header>
+    <div class="hubhero">
+      <div class="kick">THE SUNKEN SHRINE · EXPEDITION MAP</div>
+      <h1>Choose your <b>expedition</b></h1>
+      <p id="hubRestore">The shrine sleeps in ruin. Three tasks await.</p>
+      <p class="hubrules">Each site on the map accepts up to <b>5 verified runs</b> per explorer — every certified run
+         starts from a slightly shifted prop position, so no two trajectories are alike. Fail, and nothing is
+         consumed. After the 5th verified run a site is complete; practice is always open and never locks.
+         Click a site on the map to travel there.</p>
+    </div>
     <div id="hubCards"></div>
-    <div id="hubLog" style="text-align:left;margin-top:14px"></div>
+    <div class="hubgrid">
+      <section class="hubpanel"><h2>📜 Expedition log</h2><div id="hubLog"></div></section>
+      <section class="hubpanel"><h2>How verified runs work</h2>
+        <p>Every certified run is recorded at 30 Hz as a Franka Panda trajectory. Runs with quality ≥ 60 are
+           accepted into the public training dataset; points convert and dataset revenue splits by the published
+           constants in POLICY.md — nothing hidden, nothing adjusted after the fact. Practice runs are recorded
+           too, clearly labelled as practice.</p></section>
+    </div>
+    <footer class="hubfoot">OpenGrasp — transparent robot teleoperation · <a href="../">v1 Research Mode</a> · <a href="https://github.com/jusst01/opengrasp" target="_blank" rel="noopener">GitHub</a></footer>
   </div>
 </div>
 
