@@ -8,10 +8,9 @@ Live game: https://jusst01.github.io/opengrasp/v2/ · Repo: https://github.com/j
 - **Game:** browser robot-arm teleoperation, MuJoCo-WASM 3.12 + Franka Panda 7-DOF,
   real contact physics, Cartesian end-effector control. Playtested by Jallu
   2026-11-10, confirmed smooth after his 5-point controls fix (commit 3224afa).
-- **Expedition Hub + 3 levels** (commit ee79586, verified live): 01 Rescue the Relic,
+- **Expedition Hub + 3 levels** (commit 990f3bc, verified live 2026-11-10 19:00 WIB): 01 Rescue the Relic,
   02 Restore the Monolith (stone drum must sit UPRIGHT, tilt meter), 03 Restock the
-  Potion Shelf (fragile flask). Finish a task → back to hub → certified task LOCKS
-  (stars kept); Practice mode always open, never locks/earns. Adventure narrative
+  Potion Shelf (fragile flask). Finish a task → back to hub → up to 5 verified runs per task (failed runs don't consume; stars = best run, points accumulate; each verified run starts from a jittered prop pose, recorded in the episode JSON). Practice mode always open, never locks/earns. Adventure narrative
   lives in the hub (shrine restoration + expedition log).
 - **Dataset angle:** every episode recorded at 30 Hz and exportable as JSON
   (opengrasp-episode v2, assists declared). Open quality formula, acceptance
@@ -75,8 +74,10 @@ recommendation: ship v2 as-is for the deadline; extra arm models are Season 1.
    contact physics. Every session is recorded as a training episode, 30 Hz,
    LeRobot-style. Play the game, produce the dataset.
 3. Three expeditions in the hub: rescue a fragile relic, restore a monolith,
-   restock a potion shelf. Finish one and it locks — certified, stars kept.
-   Practice stays open. The shrine rebuilds as you go.
+   restock a potion shelf. Each one takes up to 5 verified runs — failed runs
+   don't count, stars are your best run, and every verified run starts from a
+   slightly different prop pose so the data actually varies. Practice stays open.
+   The shrine rebuilds as you go.
 4. Here's the part incumbents won't show you: our points conversion and our
    dataset-licensing split are published constants, in the repo and in a NEAR
    contract. 70% of licensing revenue goes to the contributors, pro-rata by

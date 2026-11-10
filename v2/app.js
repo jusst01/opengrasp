@@ -530,10 +530,12 @@ const RESTORE_LINES = [
   'Relic safe and monolith standing — the shrine is waking.',
   'The shrine is whole again. Dawnwater glows on the shelf. The expedition is legend.',
 ];
-const MAP_POS = [{ x: 16, y: 55 }, { x: 50, y: 27 }, { x: 84, y: 55 }]; // % positions on the expedition map
+const MAP_POS = [{ x: 15, y: 58 }, { x: 50, y: 30 }, { x: 85, y: 58 }]; // % positions on the expedition map
 function renderHub() {
   const restored = LEVELS.filter((_, i) => verifiedCount(i) > 0).length;
   $('hubPoints').textContent = progress.points;
+  if ($('hubVerified')) $('hubVerified').textContent = LEVELS.reduce((s, _, i) => s + verifiedCount(i), 0) + ' / ' + (MAX_VERIFIED * LEVELS.length);
+  if ($('hubStars')) $('hubStars').textContent = LEVELS.reduce((s, _, i) => s + (progress.stars[i] || 0), 0) + ' / ' + (3 * LEVELS.length);
   $('hubRestore').textContent = RESTORE_LINES[restored];
   $('hubLog').innerHTML = LEVELS.map((lv, i) => verifiedCount(i) > 0
     ? '<div class="logline">📜 <b>' + lv.title + ':</b> ' + lv.outro + '</div>' : '').join('') || '<div class="logline dim">No log entries yet — complete your first verified run.</div>';
@@ -541,8 +543,10 @@ function renderHub() {
     const n = verifiedCount(i), st = progress.stars[i], complete = siteComplete(i);
     const pips = Array.from({ length: MAX_VERIFIED }, (_, k) => '<i class="' + (k < n ? 'on' : '') + '"></i>').join('');
     return '<div class="mapnode' + (complete ? ' complete' : '') + '" style="left:' + MAP_POS[i].x + '%;top:' + MAP_POS[i].y + '%">' +
+      '<div class="nodekick">' + lv.kick + '</div>' +
       '<div class="nodebadge">' + lv.no + '</div>' +
       '<div class="nodename">' + lv.title + '</div>' +
+      '<div class="nodesub">' + lv.sub + '</div>' +
       '<div class="nodestars">' + (st != null ? '★'.repeat(st) + '☆'.repeat(3 - st) : '☆☆☆') + '</div>' +
       '<div class="pips">' + pips + '</div>' +
       '<div class="nodestatus">' + (complete ? 'SITE COMPLETE ✓' : 'OPEN · ' + n + '/' + MAX_VERIFIED + ' verified') + '</div>' +
@@ -553,9 +557,9 @@ function renderHub() {
   }).join('');
   $('hubCards').innerHTML = '<div class="mapwrap">' +
     '<svg class="mapsvg" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true">' +
-    '<path d="M500 545 C 420 470, 260 430, 160 338" />' +
-    '<path d="M500 545 C 500 440, 500 280, 500 168" />' +
-    '<path d="M500 545 C 580 470, 740 430, 840 338" />' +
+    '<path d="M500 545 C 400 480, 240 440, 150 355" />' +
+    '<path d="M500 545 C 500 450, 500 290, 500 188" />' +
+    '<path d="M500 545 C 600 480, 760 440, 850 355" />' +
     '</svg>' +
     '<div class="shrinepin">⛩<span>THE SUNKEN SHRINE</span></div>' +
     nodes + '</div>';
