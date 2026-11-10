@@ -28,16 +28,69 @@ let siteId = 0, handBody = 0, relicBody = 0;
 let armJoints = [], armDofs = [], armRanges = [], fingerQpos = [];
 let relicQposAdr = 0, relicDofAdr = 0, guardianAct = -1;
 const HOME_Q = [0, 0, 0, -1.57079, 0, 1.57079, -0.7853];
-const RELIC_START = [0.05, -0.30, 0.238];
-const VAULT = { x: 0.26, y: 0.28, z: 0.198 };
+// ---------------------------------------------------------------- levels
+// One engine, three expeditions. Every level reuses the same control,
+// recording and scoring core; only the scene, the goal, the hazard rules
+// and the story change. Progress (certified stars + points) lives in the
+// hub and persists in localStorage; a certified success LOCKS the task —
+// fresh first runs are the data that matters — while practice stays open.
+const LEVELS = [
+  {
+    task: 'rescue_relic', scene: 'scene.xml', no: '01', title: 'Rescue the Relic',
+    kick: 'EXPEDITION 01 · THE SUNKEN SHRINE',
+    story: 'A golden idol rests on a cracked pedestal. Your golem crane is the only way out — but the idol cracks if you slam it around, and the moment you lift it, the Guardian wakes.',
+    outro: 'The relic hums softly in its cradle. One treasure recovered — and one clean, gentle trajectory in the expedition log.',
+    sub: 'The golden idol is fragile. Lift it gently, slip past the Guardian, and set it in the vault cradle.',
+    steps: ['Reach the relic', 'Grasp it — hold Space', 'Carry it gently past the Guardian', 'Release it in the vault'],
+    propStart: [0.05, -0.30, 0.238], goal: { x: 0.26, y: 0.28, z: 0.198, r: 0.052, zTol: 0.032 }, goalFlyZ: 0.203,
+    frag: { thresh: 0.55, scale: 26 }, guardian: { park: -0.30, amp: 0.30, speed: 1.05 }, upright: 0, graspW: 0.030,
+    meterLabel: 'Relic integrity', meterMode: 'integrity', guardianNote: 'The Guardian sleeps… for now.',
+    par: 75, base: 200, startToast: 'Rescue the relic — gently!', failNote: 'The relic fell from the shrine.',
+    doneTitle: 'The relic is safe.',
+  },
+  {
+    task: 'restore_monolith', scene: 'scene2.xml', no: '02', title: 'Restore the Monolith',
+    kick: 'EXPEDITION 02 · THE FALLEN PILLAR',
+    story: 'The shrine\'s great pillar lost a drum when the quake hit. The drum still stands on its plinth across the court — heavy, awkward, and missed by its pillar. Carry it home tall and set it true.',
+    outro: 'The drum stands true again, gem catching the torchlight. The shrine is one step closer to whole.',
+    sub: 'The pillar drum is heavy stone: it will not crack, but it must arrive on the pillar UPRIGHT, gem up. Watch the tilt meter — a toppled drum in the socket is no restoration.',
+    steps: ['Reach the drum', 'Grasp it — hold Space', 'Carry it tall to the pillar', 'Stand it in the socket, gem up'],
+    propStart: [-0.02, -0.30, 0.266], goal: { x: 0.30, y: 0.26, z: 0.406, r: 0.045, zTol: 0.035 }, goalFlyZ: 0.45,
+    frag: null, guardian: null, upright: 0.35, graspW: 0.030,
+    meterLabel: 'Drum tilt', meterMode: 'tilt', guardianNote: 'No Guardian stirs here. The pillar itself is the test.',
+    par: 90, base: 250, startToast: 'Restore the monolith — keep it tall!', failNote: 'The drum crashed off the dais.',
+    doneTitle: 'The drum stands true.',
+  },
+  {
+    task: 'restock_vial', scene: 'scene3.xml', no: '03', title: 'Restock the Potion Shelf',
+    kick: 'EXPEDITION 03 · THE ALCHEMIST\'S SHELF',
+    story: 'One vial of dawnwater potion survived the quake, and the alchemist wants it back on her shelf. Glass is far less forgiving than gold — and the Guardian patrols the shelf road.',
+    outro: 'The vial glows on the shelf, potion unspilled. The alchemist owes the expedition a favour.',
+    sub: 'The glass vial is very fragile — softer hands than the relic demanded. Grip it by the twine band so it hangs plumb, slip past the Guardian, and slot it onto the shelf.',
+    steps: ['Reach the vial', 'Grip the twine band — hold Space', 'Carry it softly past the Guardian', 'Slot it onto the shelf'],
+    propStart: [0.05, -0.30, 0.245], goal: { x: 0.34, y: 0.30, z: 0.314, r: 0.038, zTol: 0.030 }, goalFlyZ: 0.34,
+    frag: { thresh: 0.35, scale: 38 }, guardian: { park: -0.30, amp: 0.30, speed: 1.05 }, upright: 0, graspW: 0.032, graspOffset: [0, 0, 0.008], hangOffset: 0.008,
+    meterLabel: 'Vial integrity', meterMode: 'integrity', guardianNote: 'The Guardian sleeps… for now.',
+    par: 75, base: 250, startToast: 'Restock the vial — softer than soft!', failNote: 'The vial fell from the shrine.',
+    doneTitle: 'The vial is shelved, unspilled.',
+  },
+];
+let levelIdx = 0, L = LEVELS[0], runMode = 'certified'; // 'certified' | 'practice'
+let RELIC_START = L.propStart;
+let VAULT = L.goal;
 const WS = { x: [-0.38, 0.66], y: [-0.52, 0.52], z: [0.17, 0.88] };
 
-async function initPhysics() {
+async function initPhysics(sceneFile) {
   setProgress(0.02, 'Loading MuJoCo physics engine…');
-  mujoco = await load_mujoco({ locateFile: (p, prefix) => p.endsWith('.wasm') ? './vendor/mujoco/mujoco.wasm' : prefix + p });
-  mujoco.FS.mkdir('/working'); mujoco.FS.mkdir('/working/assets');
+  if (!mujoco) {
+    mujoco = await load_mujoco({ locateFile: (p, prefix) => p.endsWith('.wasm') ? './vendor/mujoco/mujoco.wasm' : prefix + p });
+    try { mujoco.FS.mkdir('/working'); mujoco.FS.mkdir('/working/assets'); } catch (e) { /* already there */ }
+  }
+  if (data) { try { data.delete(); } catch (e) {} data = null; }
+  if (model) { try { model.delete(); } catch (e) {} model = null; }
+  armJoints = []; armDofs = []; armRanges = []; fingerQpos = [];
   const pandaText = await fetchInto(mujoco, './panda.xml', '/working/panda.xml');
-  await fetchInto(mujoco, './scene.xml', '/working/scene.xml');
+  await fetchInto(mujoco, './' + sceneFile, '/working/scene.xml');
   const files = [...new Set([...pandaText.matchAll(/file="([^"]+)"/g)].map(m => m[1]))];
   let done = 0;
   const pool = [...files];
@@ -84,6 +137,7 @@ function nameOf(arr, adr) {
 function swizzlePos(buf, idx, target) { return target.set(buf[idx * 3], buf[idx * 3 + 2], -buf[idx * 3 + 1]); }
 function swizzleQuat(buf, idx, target) { return target.set(-buf[idx * 4 + 1], -buf[idx * 4 + 3], buf[idx * 4 + 2], -buf[idx * 4]); }
 
+let worldRoot = null, glowLight = null;
 function buildThree() {
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -112,10 +166,14 @@ function buildThree() {
   key.shadow.camera.far = 6; key.shadow.bias = -0.0004;
   scene3.add(key);
   const rim = new THREE.DirectionalLight(0x6fd8ff, 0.7); rim.position.set(-1.6, 1.2, 1.4); scene3.add(rim);
-  const glow = new THREE.PointLight(0x2ee6c8, 3.5, 1.6); glow.position.copy(V3([VAULT.x, VAULT.y, 0.45])); scene3.add(glow);
+  glowLight = new THREE.PointLight(0x2ee6c8, 3.5, 1.6); glowLight.position.copy(V3([VAULT.x, VAULT.y, 0.45])); scene3.add(glowLight);
+}
 
+function buildBodies() {
+  if (worldRoot) scene3.remove(worldRoot);
+  bodies3 = {};
   // Build one three.js group per MuJoCo body, one mesh per geom (groups 0-2).
-  const root = new THREE.Group(); root.name = 'MuJoCo Root'; scene3.add(root);
+  const root = new THREE.Group(); root.name = 'MuJoCo Root'; worldRoot = root; scene3.add(root);
   const meshGeoms = {};
   for (let b = 0; b < model.nbody; b++) { bodies3[b] = new THREE.Group(); bodies3[b].name = nameOf(model.names, model.name_bodyadr[b]); root.add(bodies3[b]); }
   for (let g = 0; g < model.ngeom; g++) {
@@ -196,13 +254,19 @@ function buildThree() {
   vaultRing = new THREE.Mesh(new THREE.RingGeometry(0.085, 0.105, 40),
     new THREE.MeshBasicMaterial({ color: 0x2ee6c8, transparent: true, opacity: 0.65, side: THREE.DoubleSide }));
   vaultRing.rotation.x = -Math.PI / 2;
-  vaultRing.position.copy(V3([VAULT.x, VAULT.y, 0.172]));
   scene3.add(vaultRing);
 
   addEventListener('resize', () => {
     camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
   });
+}
+
+function placeGoalHelpers() {
+  vaultRing.position.copy(V3([VAULT.x, VAULT.y, VAULT.z - 0.026]));
+  if (glowLight) glowLight.position.copy(V3([VAULT.x, VAULT.y, VAULT.z + 0.25]));
+  gripHit = [handleMesh];
+  for (let b = 0; b < model.nbody; b++) if (bodies3[b] && ['hand', 'left_finger', 'right_finger'].includes(bodies3[b].name)) gripHit.push(bodies3[b]);
 }
 
 function syncBodies() {
@@ -311,6 +375,7 @@ function ikStep(dt) {
 
 // ---------------------------------------------------------------- game state
 let phase = 'attract'; // attract | playing | done
+let lastRunSuccess = false;
 let simTime = 0, playTime = 0, integrity = 100, guardianCtrl = -0.30, guardianAwake = false;
 let held = false, everGrasped = false, placedDwell = 0, failed = null;
 let frames = [], lastSample = -1, prevRelicVel = [0, 0, 0], lastImpactAt = -9;
@@ -347,37 +412,117 @@ function refreshSteps() {
 function relicPos() { const o = relicBody * 3; return [data.xpos[o], data.xpos[o + 1], data.xpos[o + 2]]; }
 function relicVel() { const o = relicDofAdr; return [data.qvel[o], data.qvel[o + 1], data.qvel[o + 2]]; }
 function fingerOpen() { return (data.qpos[fingerQpos[0]] + data.qpos[fingerQpos[1]]) / 2; }
+let finalTilt = 0;
+function propTilt() { // angle between the prop's local +Z and world +Z, radians
+  const o = relicBody * 4;
+  const w = data.xquat[o], x = data.xquat[o + 1], y = data.xquat[o + 2];
+  const upZ = 1 - 2 * (x * x + y * y);
+  return Math.acos(clamp(upZ, -1, 1));
+}
 
 function resetWorld() {
   mujoco.mj_resetData(model, data);
   data.qpos.set([...HOME_Q, 0.04, 0.04], 0);
   const rq = relicQposAdr;
   data.qpos[rq] = RELIC_START[0]; data.qpos[rq + 1] = RELIC_START[1]; data.qpos[rq + 2] = RELIC_START[2];
-  data.qpos[rq + 3] = 1; data.qpos[rq + 4] = 0; data.qpos[rq + 5] = 0; data.qpos[rq + 6] = 0;
+  const pq = L.propQuat || [1, 0, 0, 0];
+  data.qpos[rq + 3] = pq[0]; data.qpos[rq + 4] = pq[1]; data.qpos[rq + 5] = pq[2]; data.qpos[rq + 6] = pq[3];
   data.ctrl.set([...HOME_Q, 255], 0);
-  if (guardianAct >= 0) data.ctrl[guardianAct] = -0.30;
+  if (guardianAct >= 0) data.ctrl[guardianAct] = L.guardian ? L.guardian.park : 0;
   mujoco.mj_forward(model, data);
   qTarget = [...HOME_Q]; gripCtrl = 255; gripGoal = 255;
   sitePos(targetPos); desiredPos.set(targetPos); targetVel.fill(0);
   targetQuat = handQuat();
   integrity = 100; held = false; everGrasped = false; placedDwell = 0; failed = null;
   frames = []; events.length = 0; jerkSum = 0; jerkN = 0; prevEE = null; eeVelPrev = null; eeAccPrev = null; flyToUses = 0; fly = null;
-  playTime = 0; guardianAwake = false; guardianCtrl = -0.30; lastImpactAt = -9;
-  prevRelicVel = [0, 0, 0];
-  $('integrityVal').textContent = '100%';
+  playTime = 0; guardianAwake = false; guardianCtrl = L.guardian ? L.guardian.park : 0; lastImpactAt = -9;
+  prevRelicVel = [0, 0, 0]; finalTilt = 0;
+  $('meterLabel').textContent = L.meterLabel;
+  $('integrityVal').textContent = L.meterMode === 'tilt' ? '0°' : '100%';
   document.querySelector('#integrityMeter > i').style.width = '100%';
   $('integrityMeter').classList.remove('bad');
-  $('guardianNote').textContent = 'The Guardian sleeps… for now.';
+  $('guardianNote').textContent = L.guardianNote;
   $('guardianNote').classList.remove('awake');
   $('stars').textContent = '';
   refreshSteps();
 }
 
+function applyLevelTexts() {
+  $('missionTitle').textContent = L.title;
+  $('missionSub').textContent = L.sub;
+  document.querySelectorAll('#steps li').forEach((li, i) => { if (L.steps[i]) li.textContent = L.steps[i]; });
+  $('scoreLab').textContent = 'PAR ' + L.par + 's';
+  $('introKick').textContent = L.kick + (runMode === 'practice' ? ' · PRACTICE' : '');
+  $('introTitle').textContent = L.title;
+  $('introStory').textContent = L.story;
+  $('introMode').textContent = runMode === 'practice'
+    ? 'Practice run: no points, nothing locks — learn the route freely.'
+    : 'Certified run: success locks this task with the stars it earns. Fail, and it stays open.';
+  document.title = 'OpenGrasp Expedition — ' + L.title;
+}
+function showIntro() { applyLevelTexts(); $('hub').classList.add('hidden'); $('intro').classList.remove('hidden'); }
+
+async function loadLevel(i, mode) {
+  levelIdx = i; L = LEVELS[i]; runMode = mode || 'certified';
+  RELIC_START = L.propStart; VAULT = L.goal;
+  $('hub').classList.add('hidden'); $('result').classList.add('hidden'); $('intro').classList.add('hidden');
+  $('loading').classList.remove('hidden');
+  setProgress(0.02, 'Sailing to the next site…');
+  try {
+    await initPhysics(L.scene);
+    buildBodies(); placeGoalHelpers(); applyLevelTexts(); resetWorld();
+    phase = 'attract';
+    setProgress(1, 'Ready.');
+    setTimeout(() => { $('loading').classList.add('hidden'); showIntro(); }, 300);
+  } catch (err) {
+    console.error(err);
+    loadmsg.textContent = 'Failed to load this expedition: ' + (err.message || err);
+  }
+}
+
+// ---------------------------------------------------------------- hub & progress
+// The hub is the adventure: the shrine restores as tasks are certified, the
+// expedition log fills in, and certified tasks lock. Practice never locks.
+let progress = { stars: {}, points: 0 };
+try { const raw = JSON.parse(localStorage.getItem('opengrasp_progress') || 'null'); if (raw && raw.stars) progress = raw; } catch (e) { /* fresh expedition */ }
+function saveProgress() { try { localStorage.setItem('opengrasp_progress', JSON.stringify(progress)); } catch (e) { /* private mode */ } }
+function certifyLevel(stars, points) {
+  if (progress.stars[levelIdx] == null) { progress.stars[levelIdx] = stars; progress.points += points; saveProgress(); }
+}
+const RESTORE_LINES = [
+  'The shrine sleeps in ruin. Three tasks await.',
+  'The relic glows in the vault — the restoration has begun.',
+  'Relic safe and monolith standing — the shrine is waking.',
+  'The shrine is whole again. Dawnwater glows on the shelf. The expedition is legend.',
+];
+function renderHub() {
+  const done = LEVELS.filter((_, i) => progress.stars[i] != null).length;
+  $('hubPoints').textContent = progress.points;
+  $('hubRestore').textContent = RESTORE_LINES[done];
+  $('hubLog').innerHTML = LEVELS.map((lv, i) => progress.stars[i] != null
+    ? '<div class="logline">📜 <b>' + lv.title + ':</b> ' + lv.outro + '</div>' : '').join('') || '<div class="logline dim">No log entries yet — certify your first task.</div>';
+  $('hubCards').innerHTML = LEVELS.map((lv, i) => {
+    const st = progress.stars[i];
+    const locked = st != null;
+    return '<div class="lvl' + (locked ? ' locked' : '') + '">' +
+      '<div class="lk">' + lv.kick + '</div>' +
+      '<h3>' + lv.no + ' · ' + lv.title + '</h3>' +
+      '<p>' + lv.sub + '</p>' +
+      '<div class="lrow"><span class="chip' + (locked ? ' done' : '') + '">' + (locked ? 'CERTIFIED ✓ LOCKED' : 'OPEN') + '</span>' +
+      '<span class="lstars">' + (locked ? '★'.repeat(st) + '☆'.repeat(3 - st) : '☆☆☆') + '</span></div>' +
+      '<div class="btnrow">' +
+      (locked ? '' : '<button class="btn" data-act="play" data-level="' + i + '">Begin Certified Run</button>') +
+      '<button class="btn ghost" data-act="practice" data-level="' + i + '">Practice</button>' +
+      '</div></div>';
+  }).join('');
+}
+function showHub() { renderHub(); $('hub').classList.remove('hidden'); }
+
 function startPlay() {
   resetWorld();
   phase = 'playing'; lastSample = -1;
-  events.push({ t: 0, type: 'expedition_start', task: 'rescue_relic' });
-  toast('Rescue the relic — gently!', 2400);
+  events.push({ t: 0, type: 'expedition_start', task: L.task, level: levelIdx + 1, mode: runMode });
+  toast((runMode === 'practice' ? 'PRACTICE · ' : '') + L.startToast, 2400);
   beep(660, 0.09, 0.04);
 }
 
@@ -387,27 +532,36 @@ function endPlay(success, note) {
   if (success) {
     const meanJerk = jerkN ? jerkSum / jerkN : 0;
     const smooth = clamp(1 - meanJerk / 60, 0, 1);
-    const speed = clamp(1 - playTime / 75, 0, 1);
-    quality = Math.round(40 + 30 * smooth + 20 * speed + 10 * (integrity / 100));
-    if (integrity <= 0) quality = Math.min(quality, 45);
+    const speed = clamp(1 - playTime / L.par, 0, 1);
+    const tail = L.meterMode === 'tilt' ? 10 * clamp(1 - finalTilt / 0.45, 0, 1) : 10 * (integrity / 100);
+    quality = Math.round(40 + 30 * smooth + 20 * speed + tail);
+    if (L.frag && integrity <= 0) quality = Math.min(quality, 45);
     stars = quality >= 85 ? 3 : quality >= 70 ? 2 : 1;
-    points = Math.round(200 * quality / 100);
-    events.push({ t: playTime, type: 'expedition_complete', quality, points, meanJerk: +meanJerk.toFixed(2) });
+    points = Math.round(L.base * quality / 100);
+    events.push({ t: playTime, type: 'expedition_complete', quality, points, meanJerk: +meanJerk.toFixed(2), mode: runMode });
+    if (runMode === 'certified') certifyLevel(stars, points);
     beep(523, 0.12, 0.05); setTimeout(() => beep(784, 0.16, 0.05), 130);
   } else {
     events.push({ t: playTime, type: 'expedition_failed', reason: note });
     beep(196, 0.25, 0.05, 'sawtooth');
   }
-  $('resultKick').textContent = success ? 'EXPEDITION COMPLETE' : 'EXPEDITION FAILED';
-  $('resultStars').textContent = success ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : '☆☆☆';
-  $('resultTitle').textContent = success ? 'The relic is safe.' : note;
+  $('resultKick').textContent = success
+    ? (runMode === 'certified' ? 'EXPEDITION COMPLETE · TASK CERTIFIED' : 'PRACTICE COMPLETE')
+    : 'EXPEDITION FAILED';
+  $('resultStars').textContent = success && runMode === 'certified' ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : '☆☆☆';
+  $('resultTitle').textContent = success ? L.doneTitle : note;
   $('stQuality').textContent = quality;
   $('stTime').textContent = playTime.toFixed(1) + 's';
-  $('stIntegrity').textContent = Math.round(integrity) + '%';
-  $('stPoints').textContent = points;
+  $('stIntegrityLab').textContent = L.meterMode === 'tilt' ? 'FINAL TILT' : 'INTEGRITY';
+  $('stIntegrity').textContent = L.meterMode === 'tilt' ? Math.round(finalTilt * 57.2958) + '°' : Math.round(integrity) + '%';
+  $('stPoints').textContent = runMode === 'certified' ? points : 0;
   $('resultNote').textContent = success
-    ? 'This run was recorded as a Franka Panda trajectory (30 Hz) — smooth carries like this are exactly the data robots learn from.'
-    : 'The trajectory was still recorded — recovery and failure data are valuable too.';
+    ? (runMode === 'certified'
+        ? L.outro + ' This run was recorded as a Franka Panda trajectory (30 Hz) — smooth carries like this are exactly the data robots learn from. The task is now certified and locked; practice stays open.'
+        : 'Practice run — no points, nothing locked. The trajectory was still recorded and labelled as practice.')
+    : 'The trajectory was still recorded — recovery and failure data are valuable too. The task stays open: try again.';
+  $('againBtn').textContent = success ? '🏕 Return to Hub' : 'Try Again';
+  lastRunSuccess = success;
   $('result').classList.remove('hidden');
   refreshSteps();
 }
@@ -420,7 +574,7 @@ function gameStep(dt) {
   const finger = fingerOpen();
   const distEE = Math.hypot(rp[0] - _ee[0], rp[1] - _ee[1], rp[2] - _ee[2]);
   const wasHeld = held;
-  held = finger < 0.020 && distEE < 0.095 && Math.hypot(rv[0], rv[1], rv[2]) < 1.2;
+  held = gripCtrl < 60 && finger < L.graspW + 0.010 && finger > 0.003 && distEE < 0.095 && Math.hypot(rv[0], rv[1], rv[2]) < 1.2;
   if (held && !wasHeld) {
     everGrasped = true; events.push({ t: playTime, type: 'grasp' });
     beep(880, 0.06, 0.035);
@@ -432,29 +586,38 @@ function gameStep(dt) {
     }
   }
   if (!held && wasHeld) events.push({ t: playTime, type: 'release', relic: rp.map(v => +v.toFixed(3)) });
-  if (guardianAwake) guardianCtrl = 0.30 * Math.sin(playTime * 1.05);
+  if (guardianAwake && L.guardian) guardianCtrl = L.guardian.amp * Math.sin(playTime * L.guardian.speed);
   // Fragility: sudden relic velocity changes = impacts / rough handling.
   const dv = Math.hypot(rv[0] - prevRelicVel[0], rv[1] - prevRelicVel[1], rv[2] - prevRelicVel[2]);
-  if (dv > 0.55 && playTime - lastImpactAt > 0.25) {
+  if (L.frag && dv > L.frag.thresh && playTime - lastImpactAt > 0.25) {
     lastImpactAt = playTime;
-    const dmg = Math.min(24, (dv - 0.55) * 26);
+    const dmg = Math.min(24, (dv - L.frag.thresh) * L.frag.scale);
     integrity = Math.max(0, integrity - dmg);
     events.push({ t: playTime, type: 'impact', dv: +dv.toFixed(2), damage: +dmg.toFixed(1), integrity: Math.round(integrity) });
     $('flash').style.opacity = 1; setTimeout(() => $('flash').style.opacity = 0, 130);
     beep(140, 0.1, 0.06, 'triangle');
-    if (integrity <= 0) toast('The relic cracked! Finish gently — score capped.', 2400);
+    if (integrity <= 0) toast('It cracked! Finish gently — score capped.', 2400);
     $('integrityVal').textContent = Math.round(integrity) + '%';
     const bar = document.querySelector('#integrityMeter > i');
     bar.style.width = integrity + '%';
     $('integrityMeter').classList.toggle('bad', integrity < 45);
   }
   prevRelicVel = rv;
+  if (L.meterMode === 'tilt') {
+    const td = Math.round(propTilt() * 57.2958);
+    $('integrityVal').textContent = td + '°';
+    const bar = document.querySelector('#integrityMeter > i');
+    bar.style.width = clamp(100 - td * 1.8, 0, 100) + '%';
+    $('integrityMeter').classList.toggle('bad', td > 35);
+  }
   // Fell off the dais?
-  if (rp[2] < 0.085 && Math.abs(rp[0]) < 2) { failed = 'The relic fell from the shrine.'; endPlay(false, failed); return; }
-  // Success: resting in the vault, released, calm.
-  const inVault = Math.hypot(rp[0] - VAULT.x, rp[1] - VAULT.y) < 0.052 && Math.abs(rp[2] - VAULT.z) < 0.032;
+  if (rp[2] < 0.085 && Math.abs(rp[0]) < 2) { failed = L.failNote; endPlay(false, failed); return; }
+  // Success: resting at the goal, released, calm — and upright, on levels that ask for it.
+  const inVault = Math.hypot(rp[0] - VAULT.x, rp[1] - VAULT.y) < VAULT.r && Math.abs(rp[2] - VAULT.z) < VAULT.zTol;
   const calm = Math.hypot(rv[0], rv[1], rv[2]) < 0.09;
-  if (inVault && calm && gripCtrl > 200 && distEE > 0.13) {
+  finalTilt = propTilt();
+  const uprightOk = !L.upright || finalTilt < L.upright;
+  if (inVault && calm && uprightOk && gripCtrl > 200 && distEE > 0.13) {
     placedDwell += dt;
     if (placedDwell > 1.0) { endPlay(true); return; }
   } else placedDwell = 0;
@@ -490,18 +653,18 @@ function gameStep(dt) {
 function downloadLog() {
   const meanJerk = jerkN ? jerkSum / jerkN : 0;
   const payload = {
-    format: 'opengrasp-episode', version: 2, task: 'rescue_relic',
+    format: 'opengrasp-episode', version: 2, task: L.task, level: levelIdx + 1, mode: runMode, certified: runMode === 'certified',
     embodiment: 'franka_emika_panda_mujoco_menagerie', dof: 7, gripper: 'parallel_2f',
     physics: { engine: 'MuJoCo WASM 3.12', timestep: model.opt.timestep, integrator: 'implicitfast' },
     control: { mode: 'cartesian_ik_dls', recordHz: 30, assists: { cartesian_ik: true, posture_nullspace: true, fly_to: flyToUses > 0 }, fly_to_uses: flyToUses, sensitivity: +sensitivity.toFixed(2) },
-    par_seconds: 75, base_points: 200,
-    result: { phase, integrity: Math.round(integrity), duration: +playTime.toFixed(2), mean_ee_jerk: +meanJerk.toFixed(2) },
+    par_seconds: L.par, base_points: L.base,
+    result: { phase, integrity: Math.round(integrity), final_tilt_deg: +(finalTilt * 57.2958).toFixed(1), duration: +playTime.toFixed(2), mean_ee_jerk: +meanJerk.toFixed(2) },
     events, frames,
   };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'opengrasp_rescue_relic_episode.json';
+  a.download = 'opengrasp_' + L.task + '_episode.json';
   a.click(); URL.revokeObjectURL(a.href);
 }
 
@@ -575,9 +738,10 @@ function onDblClick(e) {
   if (!bodies3[relicBody]) return;
   setPtr(e);
   if (ray.intersectObject(bodies3[relicBody], true).length) {
-    if (held) { toast('Already carrying — double-click the vault to fly there'); return; }
+    if (held) { toast('Already carrying — double-click the goal to fly there'); return; }
     const rp = relicPos();
-    startFly([[rp[0], rp[1], 0.45], [rp[0], rp[1], Math.max(rp[2], WS.z[0])]],
+    const go = L.graspOffset || [0, 0, 0];
+    startFly([[rp[0] + go[0], rp[1] + go[1], 0.45], [rp[0] + go[0], rp[1] + go[1], Math.max(rp[2] + go[2], WS.z[0])]],
       () => { gripGoal = 0; toast('✊ Auto-grab — carry it gently'); }, '✈ Flying to the relic…');
     return;
   }
@@ -585,8 +749,8 @@ function onDblClick(e) {
   const hit = new THREE.Vector3();
   if (ray.ray.intersectPlane(floor, hit)) {
     const mx = hit.x, my = -hit.z;
-    if (Math.hypot(mx - 0.26, my - 0.28) < 0.14) {
-      startFly([[0.26, 0.28, 0.45], [0.26, 0.28, 0.203]], null, '✈ Flying to the vault — Space releases');
+    if (Math.hypot(mx - VAULT.x, my - VAULT.y) < 0.14) {
+      startFly([[VAULT.x, VAULT.y, Math.max(0.45, L.goalFlyZ + 0.12)], [VAULT.x, VAULT.y, L.goalFlyZ]], null, '✈ Flying to the goal — Space releases');
     } else if (mx > WS.x[0] - 0.1 && mx < WS.x[1] + 0.1 && my > WS.y[0] - 0.1 && my < WS.y[1] + 0.1) {
       startFly([[mx, my, 0.45]], null, '✈ Flying…');
     }
@@ -615,7 +779,16 @@ function bindInput() {
   $('resetBtn').onclick = () => { if (phase === 'playing') startPlay(); else resetWorld(); };
   $('camBtn').onclick = () => { camera.position.copy(CAM_HOME.pos); controls.target.copy(CAM_HOME.tgt); };
   $('beginBtn').onclick = () => { $('intro').classList.add('hidden'); startPlay(); };
-  $('againBtn').onclick = () => { $('result').classList.add('hidden'); startPlay(); };
+  $('hubCards').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const i = +b.dataset.level;
+    if (b.dataset.act === 'play') loadLevel(i, 'certified');
+    else if (b.dataset.act === 'practice') loadLevel(i, 'practice');
+  });
+  $('againBtn').onclick = () => { $('result').classList.add('hidden'); if (lastRunSuccess) showHub(); else startPlay(); };
+  $('hubBtn').onclick = () => { $('result').classList.add('hidden'); showHub(); };
+  $('introHubBtn').onclick = () => { $('intro').classList.add('hidden'); showHub(); };
+  $('hubBtnTop').onclick = () => { if (phase !== 'playing') showHub(); };
   $('dlBtn').onclick = downloadLog;
 }
 
@@ -668,7 +841,7 @@ function loop(ms) {
     simTime += dt; accumulator -= dt;
     gameStep(dt);
     if (phase !== 'playing' && phase !== 'attract') { /* keep simulating in done for a lively scene */ }
-    if (phase === 'attract') guardianCtrl = -0.30;
+    if (phase === 'attract') guardianCtrl = L.guardian ? L.guardian.park : 0;
   }
   syncBodies();
   sitePos(_ee);
@@ -689,13 +862,15 @@ function loop(ms) {
 // ---------------------------------------------------------------- boot
 (async () => {
   try {
-    await initPhysics();
+    await initPhysics(L.scene);
     buildThree();
+    buildBodies(); placeGoalHelpers();
     bindInput();
+    applyLevelTexts();
     resetWorld();
     phase = 'attract';
     setProgress(1, 'Ready.');
-    setTimeout(() => { $('loading').classList.add('hidden'); $('intro').classList.remove('hidden'); }, 350);
+    setTimeout(() => { $('loading').classList.add('hidden'); renderHub(); $('hub').classList.remove('hidden'); }, 350);
     requestAnimationFrame(loop);
   } catch (err) {
     console.error(err);
