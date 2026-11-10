@@ -1,0 +1,2 @@
+hatch-webgl-allowed-domains-v1
+example.com

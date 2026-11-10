@@ -18,7 +18,7 @@ They prove the demand. But their economics are a black box, and the market has n
 
 | | Closed incumbents | OpenGrasp |
 |---|---|---|
-| Points → payout conversion | Undisclosed, off-chain, changeable at will | **Published constants** (see `POLICY.md`), to be enforced by the NEAR policy contract — design published in `contract/`, deployment on the roadmap |
+| Points → payout conversion | Undisclosed, off-chain, changeable at will | **Published constants** (see `POLICY.md`), enforced by the NEAR policy contract — **live on testnet at `opengrasp.opengraspdev.testnet`** (owner `jusst1.testnet`; verify with `get_policy()`) |
 | Native token | Yes — with vesting wallets the community has to sleuth on-chain | **No token launch or sale in this build.** Rewards and licensing settle in NEAR; any future utility token requires published supply, wallet, and vesting terms before launch |
 | Dataset licensing revenue | Opaque | **On-chain split: 70% contributors / 20% treasury / 10% ops** |
 | Which demonstrations count? | Undisclosed acceptance | **Open quality formula** (below); acceptance rate is public |
@@ -47,9 +47,10 @@ the rates in a contract and the scoring formula in this repo.
 
 ## NEAR's role
 
-- The **policy contract** (design in `contract/`; testnet deployment on the roadmap)
-  will hold the conversion rates, the revenue split, and the episode registry as
-  public constants and state — the part of the system players normally have to trust
+- The **policy contract** (source in `contract/`) is **live on NEAR testnet at
+  `opengrasp.opengraspdev.testnet`** (owner `jusst1.testnet`). It holds the
+  conversion rates, the revenue split, and the episode registry as public
+  constants and state — the part of the system players normally have to trust
   becomes the part they can read. The design and constants are public now, ahead of
   deployment, so they can be audited before any value moves.
 - **Episodes as assets:** accepted episodes are registered on-chain; the NEP-171
@@ -93,7 +94,7 @@ the rates in a contract and the scoring formula in this repo.
 ## Roadmap
 
 - [x] Playable sim, 3 tasks, recording, open quality scoring, LeRobot-style export
-- [ ] NEAR testnet policy contract live: rates + episode registry + points claims
+- [x] NEAR testnet policy contract live: `opengrasp.opengraspdev.testnet` — rates + episode registry + points claims
 - [ ] Dataset v0 published on Hugging Face with a public dataset card
 - [ ] Episode assets (NEP-171) with licensing royalties to contributors
 - [ ] Buyer-side: dataset licensing checkout paid in NEAR, split executed by contract

@@ -48,17 +48,24 @@ Because the failure mode of closed teleoperation platforms is a spreadsheet:
 conversion rates, acceptance decisions, and revenue splits that exist only inside
 the company. Every one of those is a public constant or a public state entry here.
 
-## Implementation status (2026-11-06)
+## Implementation status (2026-11-11) — DEPLOYED
 
 - Source: `src/lib.rs` + `Cargo.toml` (near-sdk 5), written from this design doc
   and POLICY.md. Constants, method names, and the 70/20/10 split match exactly.
-- NOT yet compiled — the writing VM has no Rust toolchain. Build on a machine
-  with Rust + cargo-near: `cargo near build` (wasm target).
-- Deploy (testnet) still needs Jallu's NEAR testnet account: it is the payout
-  account and the initial `owner` / `treasury` / `ops` argument to `new`
-  (all three can be the same account at first; re-pointing any of them later
-  is an explicit owner call, so the change is public). Deploy command once the
-  account exists:
+- Compiles clean (release WASM 373,131 bytes, sha256
+  `5be3f7667fcda81f3534dafc41473b76af5986ce4a6bb5bed5005772680d5402`);
+  3/3 unit tests pass (policy constants, points math + threshold, unknown-task
+  rejection). Porting notes for current near-sdk 5.x: `borsh` must be a direct
+  dependency and store-collection reads return `Option<&V>` (`.cloned()` where
+  an owned value is mutated).
+- **Live on testnet: `opengrasp.opengraspdev.testnet`** — deploy + init tx
+  `G5djeSXKrxNUhe7yeeM6WifPgi7uj6J94HsxofpgEzWh` (2026-11-11). Initialized
+  with `owner` / `treasury` / `ops` = `jusst1.testnet` (the payout account;
+  re-pointing any of them later is an explicit owner call, so the change is
+  public). `get_policy()` verified on-chain. Deployed from the project dev
+  account `opengraspdev.testnet` via near-cli-rs — Meteor Wallet blocks
+  contract deployment from web dApps, and the one-click deployer in `deploy/`
+  documents that path. Original deploy notes:
   `near deploy <account>.testnet --wasmFile target/near/opengrasp-policy.wasm --initFunction new --initArgs '{"owner":"<account>.testnet","treasury":"<account>.testnet","ops":"<account>.testnet"}'`
   then verify with `near view <account>.testnet get_policy`.
 - v0 trusts the submitted quality score (see `register_episode`); on-chain

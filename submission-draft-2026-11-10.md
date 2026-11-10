@@ -26,9 +26,12 @@ Live game: https://jusst01.github.io/opengrasp/v2/ · Repo: https://github.com/j
 
 ## Still open before submitting (checklist)
 
-- [ ] **NEAR testnet payout account — only Jallu can create this.** Blocking
-      contract compile/deploy. (Open since 2026-11-06.)
-- [ ] Compile + deploy policy contract to testnet (Muse, once account exists).
+- [x] **NEAR testnet payout account** — `jusst1.testnet` (Jallu, 2026-11-10).
+- [x] Compile + deploy policy contract to testnet — DONE 2026-11-11:
+      `opengrasp.opengraspdev.testnet`, deploy+init tx
+      `G5djeSXKrxNUhe7yeeM6WifPgi7uj6J94HsxofpgEzWh`, `get_policy()` verified
+      on-chain (70/20/10, threshold 60, base 100/200/250), owner
+      `jusst1.testnet`. Submission form payout account: `jusst1.testnet`.
 - [ ] Hugging Face dataset v0 from recorded episodes (Muse).
 - [ ] Demo video of real gameplay (Muse: gameplay capture + programmatic
       animation; AI video generation is region-blocked).
@@ -62,7 +65,7 @@ recommendation: ship v2 as-is for the deadline; extra arm models are Season 1.
   trajectory scoring anyone can re-run from the episode file.
 - **Live demo:** https://jusst01.github.io/opengrasp/v2/
 - **Repo:** https://github.com/jusst01/opengrasp
-- **Contract:** `contract/` (Rust, near-sdk 5; testnet deploy pending payout account)
+- **Contract:** `contract/` (Rust, near-sdk 5) — LIVE on testnet at `opengrasp.opengraspdev.testnet`, owner/payout `jusst1.testnet`
 - **Video / X post:** <Jallu's X post URL after posting>
 
 ## X thread draft (Jallu posts; video on tweet 1)
