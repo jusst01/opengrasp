@@ -42,13 +42,14 @@ let consts = '';
 consts += extractConst(appSrc, 'clamp') + '\n';
 consts += extractConst(appSrc, 'HOME_Q') + '\n';
 consts += extractConst(appSrc, 'LEVELS') + '\n';
-consts += 'let levelIdx = 0, L = LEVELS[0], runMode = "certified";\nlet RELIC_START = L.propStart;\nlet VAULT = L.goal;\n';
+consts += 'let levelIdx = 0, L = LEVELS[0], runMode = "certified";\nlet RELIC_START = L.propStart;\nlet VAULT = L.goal;\nlet runJitter = { dx: 0, dy: 0, yaw: 0 };\nlet runVerifiedNo = null;\n';
 consts += extractConst(appSrc, 'WS') + '\n';
+consts += extractConst(appSrc, 'MAX_VERIFIED') + '\n';
 let code = '';
 for (const fn of ['sitePos', 'handQuat', 'quatMul', 'quatRotVec', 'invert6', 'ikStep',
   'relicPos', 'relicVel', 'fingerOpen', 'propTilt', 'beep', 'toast',
   'setStep', 'refreshSteps', 'resetWorld', 'startPlay', 'endPlay', 'gameStep',
-  'startFly', 'stepFly', 'certifyLevel', 'saveProgress']) code += extractFn(appSrc, fn) + '\n';
+  'startFly', 'stepFly', 'certifyLevel', 'saveProgress', 'verifiedCount', 'siteComplete']) code += extractFn(appSrc, fn) + '\n';
 
 // ---------- browser stubs ----------
 const fakeEl = () => ({
@@ -82,7 +83,7 @@ const events = [];
 let audioCtx = null, toastTimer = null;
 let fly = null, flyToUses = 0;
 let finalTilt = 0;
-let progress = { stars: {}, points: 0 };
+let progress = { stars: {}, points: 0, attempts: {} };
 const _ee = new Float64Array(3);
 `;
 
@@ -139,13 +140,17 @@ function runUntil(cond, maxSec) { const t0 = simTime; while (!cond() && simTime 
 async function playLevel(mujocoMod, idx) {
   levelIdx = idx; L = LEVELS[idx]; runMode = 'certified';
   RELIC_START = L.propStart; VAULT = L.goal;
-  progress = { stars: {}, points: 0 };
+  progress = { stars: {}, points: 0, attempts: {} };
   await bootPhysics(mujocoMod, L.scene);
   startPlay();
   runFor(0.6);
   const P = L.propStart, G = L.goal;
   const off = L.graspOffset || [0, 0, 0], hang = L.hangOffset || 0;
-  const GP = [P[0] + off[0], P[1] + off[1], P[2] + off[2]];
+  const RP = relicPos(); // XY from the LIVE prop (certified runs jitter the start);
+  // grasp HEIGHT stays nominal — props settle ~11 mm into their pockets, and a
+  // low grip hangs the drum tilted (L2 regression caught 2026-11-10).
+  if (process.env.OG_DEBUG_POS) console.log('  [pos] nominal=' + P.map(v => v.toFixed(3)).join(',') + ' live=' + RP.map(v => v.toFixed(3)).join(',') + ' jitter=' + JSON.stringify(runJitter));
+  const GP = [RP[0] + off[0], RP[1] + off[1], P[2] + off[2]];
   // --- grasp, with a test lift and wrist-yaw retries (what a player does) ---
   startFly([[GP[0], GP[1], 0.45], [GP[0], GP[1], GP[2]]], null, 'harness: to prop');
   runUntil(() => !fly, 25);

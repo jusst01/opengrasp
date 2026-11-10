@@ -31,9 +31,11 @@ const HOME_Q = [0, 0, 0, -1.57079, 0, 1.57079, -0.7853];
 // ---------------------------------------------------------------- levels
 // One engine, three expeditions. Every level reuses the same control,
 // recording and scoring core; only the scene, the goal, the hazard rules
-// and the story change. Progress (certified stars + points) lives in the
-// hub and persists in localStorage; a certified success LOCKS the task —
-// fresh first runs are the data that matters — while practice stays open.
+// and the story change. Progress (verified runs, best stars, points) lives
+// in the hub and persists in localStorage; each task accepts up to
+// MAX_VERIFIED verified runs per explorer — every certified run starts
+// from a slightly shifted prop position, so no two trajectories are
+// alike — and practice stays open forever.
 const LEVELS = [
   {
     task: 'rescue_relic', scene: 'scene.xml', no: '01', title: 'Rescue the Relic',
@@ -42,7 +44,7 @@ const LEVELS = [
     outro: 'The relic hums softly in its cradle. One treasure recovered — and one clean, gentle trajectory in the expedition log.',
     sub: 'The golden idol is fragile. Lift it gently, slip past the Guardian, and set it in the vault cradle.',
     steps: ['Reach the relic', 'Grasp it — hold Space', 'Carry it gently past the Guardian', 'Release it in the vault'],
-    propStart: [0.05, -0.30, 0.238], goal: { x: 0.26, y: 0.28, z: 0.198, r: 0.052, zTol: 0.032 }, goalFlyZ: 0.203,
+    propStart: [0.05, -0.30, 0.238], jitter: { xy: 0.02, yaw: 0.30 }, goal: { x: 0.26, y: 0.28, z: 0.198, r: 0.052, zTol: 0.032 }, goalFlyZ: 0.203,
     frag: { thresh: 0.55, scale: 26 }, guardian: { park: -0.30, amp: 0.30, speed: 1.05 }, upright: 0, graspW: 0.030,
     meterLabel: 'Relic integrity', meterMode: 'integrity', guardianNote: 'The Guardian sleeps… for now.',
     par: 75, base: 200, startToast: 'Rescue the relic — gently!', failNote: 'The relic fell from the shrine.',
@@ -55,7 +57,7 @@ const LEVELS = [
     outro: 'The drum stands true again, gem catching the torchlight. The shrine is one step closer to whole.',
     sub: 'The pillar drum is heavy stone: it will not crack, but it must arrive on the pillar UPRIGHT, gem up. Watch the tilt meter — a toppled drum in the socket is no restoration.',
     steps: ['Reach the drum', 'Grasp it — hold Space', 'Carry it tall to the pillar', 'Stand it in the socket, gem up'],
-    propStart: [-0.02, -0.30, 0.266], goal: { x: 0.30, y: 0.26, z: 0.406, r: 0.045, zTol: 0.035 }, goalFlyZ: 0.45,
+    propStart: [-0.02, -0.30, 0.266], jitter: { xy: 0.006, yaw: 0 }, goal: { x: 0.30, y: 0.26, z: 0.406, r: 0.045, zTol: 0.035 }, goalFlyZ: 0.45,
     frag: null, guardian: null, upright: 0.35, graspW: 0.030,
     meterLabel: 'Drum tilt', meterMode: 'tilt', guardianNote: 'No Guardian stirs here. The pillar itself is the test.',
     par: 90, base: 250, startToast: 'Restore the monolith — keep it tall!', failNote: 'The drum crashed off the dais.',
@@ -68,7 +70,7 @@ const LEVELS = [
     outro: 'The vial glows on the shelf, potion unspilled. The alchemist owes the expedition a favour.',
     sub: 'The glass vial is very fragile — softer hands than the relic demanded. Grip it by the twine band so it hangs plumb, slip past the Guardian, and slot it onto the shelf.',
     steps: ['Reach the vial', 'Grip the twine band — hold Space', 'Carry it softly past the Guardian', 'Slot it onto the shelf'],
-    propStart: [0.05, -0.30, 0.245], goal: { x: 0.34, y: 0.30, z: 0.314, r: 0.038, zTol: 0.030 }, goalFlyZ: 0.34,
+    propStart: [0.05, -0.30, 0.245], jitter: { xy: 0.01, yaw: 0.15 }, goal: { x: 0.34, y: 0.30, z: 0.314, r: 0.038, zTol: 0.030 }, goalFlyZ: 0.34,
     frag: { thresh: 0.35, scale: 38 }, guardian: { park: -0.30, amp: 0.30, speed: 1.05 }, upright: 0, graspW: 0.032, graspOffset: [0, 0, 0.008], hangOffset: 0.008,
     meterLabel: 'Vial integrity', meterMode: 'integrity', guardianNote: 'The Guardian sleeps… for now.',
     par: 75, base: 250, startToast: 'Restock the vial — softer than soft!', failNote: 'The vial fell from the shrine.',
@@ -78,6 +80,8 @@ const LEVELS = [
 let levelIdx = 0, L = LEVELS[0], runMode = 'certified'; // 'certified' | 'practice'
 let RELIC_START = L.propStart;
 let VAULT = L.goal;
+let runJitter = { dx: 0, dy: 0, yaw: 0 }; // per-certified-run prop offset (data variety)
+let runVerifiedNo = null; // 1..MAX_VERIFIED for certified runs, null in practice
 const WS = { x: [-0.38, 0.66], y: [-0.52, 0.52], z: [0.17, 0.88] };
 
 async function initPhysics(sceneFile) {
@@ -427,6 +431,19 @@ function resetWorld() {
   data.qpos[rq] = RELIC_START[0]; data.qpos[rq + 1] = RELIC_START[1]; data.qpos[rq + 2] = RELIC_START[2];
   const pq = L.propQuat || [1, 0, 0, 0];
   data.qpos[rq + 3] = pq[0]; data.qpos[rq + 4] = pq[1]; data.qpos[rq + 5] = pq[2]; data.qpos[rq + 6] = pq[3];
+  // Certified runs start from a slightly shifted prop pose (±2 cm, ±0.3 rad
+  // yaw) so each verified trajectory is genuinely different training data.
+  runJitter = { dx: 0, dy: 0, yaw: 0 };
+  if (runMode === 'certified') {
+    const J = L.jitter || { xy: 0.02, yaw: 0.3 };
+    const dx = (Math.random() * 2 - 1) * J.xy, dy = (Math.random() * 2 - 1) * J.xy, yaw = (Math.random() * 2 - 1) * J.yaw;
+    data.qpos[rq] += dx; data.qpos[rq + 1] += dy;
+    const cy = Math.cos(yaw / 2), sy = Math.sin(yaw / 2);
+    const w = data.qpos[rq + 3], x = data.qpos[rq + 4], y = data.qpos[rq + 5], z = data.qpos[rq + 6];
+    data.qpos[rq + 3] = cy * w - sy * z; data.qpos[rq + 4] = cy * x - sy * y;
+    data.qpos[rq + 5] = cy * y + sy * x; data.qpos[rq + 6] = cy * z + sy * w;
+    runJitter = { dx: +dx.toFixed(3), dy: +dy.toFixed(3), yaw: +yaw.toFixed(3) };
+  }
   data.ctrl.set([...HOME_Q, 255], 0);
   if (guardianAct >= 0) data.ctrl[guardianAct] = L.guardian ? L.guardian.park : 0;
   mujoco.mj_forward(model, data);
@@ -457,7 +474,7 @@ function applyLevelTexts() {
   $('introStory').textContent = L.story;
   $('introMode').textContent = runMode === 'practice'
     ? 'Practice run: no points, nothing locks — learn the route freely.'
-    : 'Certified run: success locks this task with the stars it earns. Fail, and it stays open.';
+    : 'Certified run: a verified success counts toward this site\'s ' + MAX_VERIFIED + ' runs — fail, and nothing is consumed. Each certified run starts from a slightly shifted prop position.';
   document.title = 'OpenGrasp Expedition — ' + L.title;
 }
 function showIntro() { applyLevelTexts(); $('hub').classList.add('hidden'); $('intro').classList.remove('hidden'); }
@@ -481,13 +498,31 @@ async function loadLevel(i, mode) {
 }
 
 // ---------------------------------------------------------------- hub & progress
-// The hub is the adventure: the shrine restores as tasks are certified, the
-// expedition log fills in, and certified tasks lock. Practice never locks.
-let progress = { stars: {}, points: 0 };
-try { const raw = JSON.parse(localStorage.getItem('opengrasp_progress') || 'null'); if (raw && raw.stars) progress = raw; } catch (e) { /* fresh expedition */ }
+// The hub is the adventure map: the shrine restores as sites are explored,
+// the expedition log fills in, and each site accepts up to MAX_VERIFIED
+// verified runs per explorer before it is complete. Practice never locks.
+const MAX_VERIFIED = 5;
+let progress = { stars: {}, points: 0, attempts: {} };
+try {
+  const raw = JSON.parse(localStorage.getItem('opengrasp_progress') || 'null');
+  if (raw && raw.stars) {
+    progress = raw;
+    if (!progress.attempts) { // migrate pre-map saves: a certified task had 1 verified run
+      progress.attempts = {};
+      for (const k in progress.stars) progress.attempts[k] = 1;
+    }
+  }
+} catch (e) { /* fresh expedition */ }
 function saveProgress() { try { localStorage.setItem('opengrasp_progress', JSON.stringify(progress)); } catch (e) { /* private mode */ } }
+function verifiedCount(i) { return progress.attempts[i] || 0; }
+function siteComplete(i) { return verifiedCount(i) >= MAX_VERIFIED; }
 function certifyLevel(stars, points) {
-  if (progress.stars[levelIdx] == null) { progress.stars[levelIdx] = stars; progress.points += points; saveProgress(); }
+  const n = verifiedCount(levelIdx) + 1;
+  progress.attempts[levelIdx] = n;
+  if (progress.stars[levelIdx] == null || stars > progress.stars[levelIdx]) progress.stars[levelIdx] = stars;
+  progress.points += points;
+  saveProgress();
+  return n;
 }
 const RESTORE_LINES = [
   'The shrine sleeps in ruin. Three tasks await.',
@@ -495,33 +530,43 @@ const RESTORE_LINES = [
   'Relic safe and monolith standing — the shrine is waking.',
   'The shrine is whole again. Dawnwater glows on the shelf. The expedition is legend.',
 ];
+const MAP_POS = [{ x: 16, y: 55 }, { x: 50, y: 27 }, { x: 84, y: 55 }]; // % positions on the expedition map
 function renderHub() {
-  const done = LEVELS.filter((_, i) => progress.stars[i] != null).length;
+  const restored = LEVELS.filter((_, i) => verifiedCount(i) > 0).length;
   $('hubPoints').textContent = progress.points;
-  $('hubRestore').textContent = RESTORE_LINES[done];
-  $('hubLog').innerHTML = LEVELS.map((lv, i) => progress.stars[i] != null
-    ? '<div class="logline">📜 <b>' + lv.title + ':</b> ' + lv.outro + '</div>' : '').join('') || '<div class="logline dim">No log entries yet — certify your first task.</div>';
-  $('hubCards').innerHTML = LEVELS.map((lv, i) => {
-    const st = progress.stars[i];
-    const locked = st != null;
-    return '<div class="lvl' + (locked ? ' locked' : '') + '">' +
-      '<div class="lk">' + lv.kick + '</div>' +
-      '<h3>' + lv.no + ' · ' + lv.title + '</h3>' +
-      '<p>' + lv.sub + '</p>' +
-      '<div class="lrow"><span class="chip' + (locked ? ' done' : '') + '">' + (locked ? 'CERTIFIED ✓ LOCKED' : 'OPEN') + '</span>' +
-      '<span class="lstars">' + (locked ? '★'.repeat(st) + '☆'.repeat(3 - st) : '☆☆☆') + '</span></div>' +
-      '<div class="btnrow">' +
-      (locked ? '' : '<button class="btn" data-act="play" data-level="' + i + '">Begin Certified Run</button>') +
+  $('hubRestore').textContent = RESTORE_LINES[restored];
+  $('hubLog').innerHTML = LEVELS.map((lv, i) => verifiedCount(i) > 0
+    ? '<div class="logline">📜 <b>' + lv.title + ':</b> ' + lv.outro + '</div>' : '').join('') || '<div class="logline dim">No log entries yet — complete your first verified run.</div>';
+  const nodes = LEVELS.map((lv, i) => {
+    const n = verifiedCount(i), st = progress.stars[i], complete = siteComplete(i);
+    const pips = Array.from({ length: MAX_VERIFIED }, (_, k) => '<i class="' + (k < n ? 'on' : '') + '"></i>').join('');
+    return '<div class="mapnode' + (complete ? ' complete' : '') + '" style="left:' + MAP_POS[i].x + '%;top:' + MAP_POS[i].y + '%">' +
+      '<div class="nodebadge">' + lv.no + '</div>' +
+      '<div class="nodename">' + lv.title + '</div>' +
+      '<div class="nodestars">' + (st != null ? '★'.repeat(st) + '☆'.repeat(3 - st) : '☆☆☆') + '</div>' +
+      '<div class="pips">' + pips + '</div>' +
+      '<div class="nodestatus">' + (complete ? 'SITE COMPLETE ✓' : 'OPEN · ' + n + '/' + MAX_VERIFIED + ' verified') + '</div>' +
+      '<div class="nodebtns">' +
+      (complete ? '' : '<button class="btn" data-act="play" data-level="' + i + '">' + (n === 0 ? 'Begin Certified Run' : 'Verified Run ' + (n + 1) + ' of ' + MAX_VERIFIED) + '</button>') +
       '<button class="btn ghost" data-act="practice" data-level="' + i + '">Practice</button>' +
       '</div></div>';
   }).join('');
+  $('hubCards').innerHTML = '<div class="mapwrap">' +
+    '<svg class="mapsvg" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true">' +
+    '<path d="M500 545 C 420 470, 260 430, 160 338" />' +
+    '<path d="M500 545 C 500 440, 500 280, 500 168" />' +
+    '<path d="M500 545 C 580 470, 740 430, 840 338" />' +
+    '</svg>' +
+    '<div class="shrinepin">⛩<span>THE SUNKEN SHRINE</span></div>' +
+    nodes + '</div>';
 }
 function showHub() { renderHub(); $('hub').classList.remove('hidden'); }
 
 function startPlay() {
   resetWorld();
+  runVerifiedNo = runMode === 'certified' ? verifiedCount(levelIdx) + 1 : null;
   phase = 'playing'; lastSample = -1;
-  events.push({ t: 0, type: 'expedition_start', task: L.task, level: levelIdx + 1, mode: runMode });
+  events.push({ t: 0, type: 'expedition_start', task: L.task, level: levelIdx + 1, mode: runMode, verified_run: runVerifiedNo, prop_jitter: runJitter });
   toast((runMode === 'practice' ? 'PRACTICE · ' : '') + L.startToast, 2400);
   beep(660, 0.09, 0.04);
 }
@@ -539,7 +584,7 @@ function endPlay(success, note) {
     stars = quality >= 85 ? 3 : quality >= 70 ? 2 : 1;
     points = Math.round(L.base * quality / 100);
     events.push({ t: playTime, type: 'expedition_complete', quality, points, meanJerk: +meanJerk.toFixed(2), mode: runMode });
-    if (runMode === 'certified') certifyLevel(stars, points);
+    if (runMode === 'certified') runVerifiedNo = certifyLevel(stars, points);
     beep(523, 0.12, 0.05); setTimeout(() => beep(784, 0.16, 0.05), 130);
   } else {
     events.push({ t: playTime, type: 'expedition_failed', reason: note });
@@ -557,7 +602,7 @@ function endPlay(success, note) {
   $('stPoints').textContent = runMode === 'certified' ? points : 0;
   $('resultNote').textContent = success
     ? (runMode === 'certified'
-        ? L.outro + ' This run was recorded as a Franka Panda trajectory (30 Hz) — smooth carries like this are exactly the data robots learn from. The task is now certified and locked; practice stays open.'
+        ? L.outro + ' This run was recorded as a Franka Panda trajectory (30 Hz) — smooth carries like this are exactly the data robots learn from. ' + (runVerifiedNo >= MAX_VERIFIED ? 'That was verified run ' + MAX_VERIFIED + ' of ' + MAX_VERIFIED + ' — this site is now complete on the expedition map; practice stays open.' : 'Verified run ' + runVerifiedNo + ' of ' + MAX_VERIFIED + ' recorded — ' + (MAX_VERIFIED - runVerifiedNo) + ' more verified run' + (MAX_VERIFIED - runVerifiedNo === 1 ? '' : 's') + ' fit this site, each from a fresh prop position. Practice stays open.')
         : 'Practice run — no points, nothing locked. The trajectory was still recorded and labelled as practice.')
     : 'The trajectory was still recorded — recovery and failure data are valuable too. The task stays open: try again.';
   $('againBtn').textContent = success ? '🏕 Return to Hub' : 'Try Again';
@@ -654,6 +699,7 @@ function downloadLog() {
   const meanJerk = jerkN ? jerkSum / jerkN : 0;
   const payload = {
     format: 'opengrasp-episode', version: 2, task: L.task, level: levelIdx + 1, mode: runMode, certified: runMode === 'certified',
+    verified_run: runVerifiedNo, max_verified: MAX_VERIFIED, prop_jitter: runJitter,
     embodiment: 'franka_emika_panda_mujoco_menagerie', dof: 7, gripper: 'parallel_2f',
     physics: { engine: 'MuJoCo WASM 3.12', timestep: model.opt.timestep, integrator: 'implicitfast' },
     control: { mode: 'cartesian_ik_dls', recordHz: 30, assists: { cartesian_ik: true, posture_nullspace: true, fly_to: flyToUses > 0 }, fly_to_uses: flyToUses, sensitivity: +sensitivity.toFixed(2) },
