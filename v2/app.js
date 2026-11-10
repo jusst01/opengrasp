@@ -101,7 +101,7 @@ function buildThree() {
   controls.target.copy(CAM_HOME.tgt);
   controls.enableDamping = true; controls.dampingFactor = 0.08;
   controls.maxPolarAngle = 1.45; controls.minDistance = 0.5; controls.maxDistance = 4;
-  controls.enablePan = false; controls.enableZoom = false; // wheel drives gripper height
+  controls.enablePan = false; controls.enableZoom = true; // wheel = camera zoom only (never gripper height)
 
   scene3.add(new THREE.AmbientLight(0xbdd6e6, 0.55));
   const key = new THREE.DirectionalLight(0xfff1d6, 2.2);
@@ -361,7 +361,7 @@ function resetWorld() {
   sitePos(targetPos); desiredPos.set(targetPos); targetVel.fill(0);
   targetQuat = handQuat();
   integrity = 100; held = false; everGrasped = false; placedDwell = 0; failed = null;
-  frames = []; events.length = 0; jerkSum = 0; jerkN = 0; prevEE = null; eeVelPrev = null; eeAccPrev = null;
+  frames = []; events.length = 0; jerkSum = 0; jerkN = 0; prevEE = null; eeVelPrev = null; eeAccPrev = null; flyToUses = 0; fly = null;
   playTime = 0; guardianAwake = false; guardianCtrl = -0.30; lastImpactAt = -9;
   prevRelicVel = [0, 0, 0];
   $('integrityVal').textContent = '100%';
@@ -493,7 +493,7 @@ function downloadLog() {
     format: 'opengrasp-episode', version: 2, task: 'rescue_relic',
     embodiment: 'franka_emika_panda_mujoco_menagerie', dof: 7, gripper: 'parallel_2f',
     physics: { engine: 'MuJoCo WASM 3.12', timestep: model.opt.timestep, integrator: 'implicitfast' },
-    control: { mode: 'cartesian_ik_dls', recordHz: 30, assists: { cartesian_ik: true, posture_nullspace: true } },
+    control: { mode: 'cartesian_ik_dls', recordHz: 30, assists: { cartesian_ik: true, posture_nullspace: true, fly_to: flyToUses > 0 }, fly_to_uses: flyToUses, sensitivity: +sensitivity.toFixed(2) },
     par_seconds: 75, base_points: 200,
     result: { phase, integrity: Math.round(integrity), duration: +playTime.toFixed(2), mean_ee_jerk: +meanJerk.toFixed(2) },
     events, frames,
@@ -507,38 +507,103 @@ function downloadLog() {
 
 // ---------------------------------------------------------------- input
 addEventListener('keydown', (e) => {
+  if (e.code !== 'ShiftLeft' && e.code !== 'ShiftRight') fly = null; // manual input takes over
   if (e.code === 'Space') { gripGoal = 0; e.preventDefault(); }
   keys.add(e.code); precision = e.shiftKey;
   if (e.code === 'KeyR') desiredPos[2] = clamp(desiredPos[2] + 0.0016, WS.z[0], WS.z[1]); // handled in loop via keys too
 });
 addEventListener('keyup', (e) => { if (e.code === 'Space') gripGoal = 255; keys.delete(e.code); precision = e.shiftKey; });
-addEventListener('blur', () => { keys.clear(); gripGoal = 255; });
+addEventListener('blur', () => { keys.clear(); gripGoal = 255; fly = null; dragging = false; dragAnchor = null; if (controls) controls.enabled = true; });
 
-let dragging = false;
+let dragging = false, dragAnchor = null;
+let sensitivity = 1.0;
 const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
-function castHandle(e) {
+function setPtr(e) {
   const r = renderer.domElement.getBoundingClientRect();
   ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ptr, camera);
-  return ray.intersectObject(handleMesh, false).length > 0;
+}
+/* v1-style mouse control: grab the gripper (handle, hand or fingers) and pull it
+   through 3D on a camera-facing plane — vertical included, sensitivity-scaled. */
+let gripHit = [];
+function castHandle(e) {
+  setPtr(e);
+  return ray.intersectObjects(gripHit, true).length > 0;
+}
+const dragPlane = new THREE.Plane();
+function dragStart(e) {
+  setPtr(e);
+  const n = new THREE.Vector3(); camera.getWorldDirection(n);
+  const anchor = V3(targetPos);
+  dragPlane.setFromNormalAndCoplanarPoint(n, anchor);
+  const p0 = new THREE.Vector3();
+  dragAnchor = ray.ray.intersectPlane(dragPlane, p0) ? { plane: p0.clone(), start: [...desiredPos] } : null;
 }
 function dragMove(e) {
-  const r = renderer.domElement.getBoundingClientRect();
-  ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-  ray.setFromCamera(ptr, camera);
-  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -targetPos[2]); // three Y = MuJoCo Z
+  if (!dragAnchor) return;
+  setPtr(e);
   const hit = new THREE.Vector3();
-  if (ray.ray.intersectPlane(plane, hit)) {
-    desiredPos[0] = clamp(hit.x, WS.x[0], WS.x[1]);
-    desiredPos[1] = clamp(-hit.z, WS.y[0], WS.y[1]);
+  if (ray.ray.intersectPlane(dragPlane, hit)) {
+    const d = hit.sub(dragAnchor.plane); // three-space delta -> MuJoCo (x, -z, y)
+    desiredPos[0] = clamp(dragAnchor.start[0] + d.x * sensitivity, WS.x[0], WS.x[1]);
+    desiredPos[1] = clamp(dragAnchor.start[1] - d.z * sensitivity, WS.y[0], WS.y[1]);
+    desiredPos[2] = clamp(dragAnchor.start[2] + d.y * sensitivity, WS.z[0], WS.z[1]);
+  }
+}
+/* double-click flight (v1 favourite): scripted desiredPos waypoints; the
+   accel-limited target smoothing turns them into a smooth arc. Any key or
+   drag cancels. Uses are counted and declared in the episode metadata. */
+let fly = null, flyToUses = 0;
+function startFly(waypoints, onDone, label) {
+  fly = { queue: waypoints.map(w => [...w]), onDone: onDone || null, t0: simTime };
+  if (phase === 'playing') { flyToUses++; events.push({ t: +playTime.toFixed(2), type: 'fly_to', label: label || '' }); }
+  if (label) toast(label);
+}
+function stepFly() {
+  if (!fly) return;
+  if (simTime - fly.t0 > 14) { fly = null; toast('⚠ Flight stopped short — take manual control'); return; }
+  const w = fly.queue[0];
+  desiredPos[0] = w[0]; desiredPos[1] = w[1]; desiredPos[2] = w[2];
+  sitePos(_ee);
+  const dT = Math.hypot(targetPos[0] - w[0], targetPos[1] - w[1], targetPos[2] - w[2]);
+  const dE = Math.hypot(_ee[0] - w[0], _ee[1] - w[1], _ee[2] - w[2]);
+  // a waypoint counts as reached only when the hand itself is there — the
+  // auto-grab must never fire while the gripper is still centimetres above.
+  if (dT < 0.025 && dE < 0.045) { fly.queue.shift(); if (!fly.queue.length) { const f = fly.onDone; fly = null; if (f) f(); } }
+}
+function onDblClick(e) {
+  if (!bodies3[relicBody]) return;
+  setPtr(e);
+  if (ray.intersectObject(bodies3[relicBody], true).length) {
+    if (held) { toast('Already carrying — double-click the vault to fly there'); return; }
+    const rp = relicPos();
+    startFly([[rp[0], rp[1], 0.45], [rp[0], rp[1], Math.max(rp[2], WS.z[0])]],
+      () => { gripGoal = 0; toast('✊ Auto-grab — carry it gently'); }, '✈ Flying to the relic…');
+    return;
+  }
+  const floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.10); // dais top
+  const hit = new THREE.Vector3();
+  if (ray.ray.intersectPlane(floor, hit)) {
+    const mx = hit.x, my = -hit.z;
+    if (Math.hypot(mx - 0.26, my - 0.28) < 0.14) {
+      startFly([[0.26, 0.28, 0.45], [0.26, 0.28, 0.203]], null, '✈ Flying to the vault — Space releases');
+    } else if (mx > WS.x[0] - 0.1 && mx < WS.x[1] + 0.1 && my > WS.y[0] - 0.1 && my < WS.y[1] + 0.1) {
+      startFly([[mx, my, 0.45]], null, '✈ Flying…');
+    }
   }
 }
 function bindInput() {
   const el = renderer.domElement;
-  el.addEventListener('pointerdown', (e) => { if (castHandle(e)) { dragging = true; controls.enabled = false; el.setPointerCapture(e.pointerId); dragMove(e); } });
+  gripHit = [handleMesh];
+  for (let b = 0; b < model.nbody; b++) if (bodies3[b] && ['hand', 'left_finger', 'right_finger'].includes(bodies3[b].name)) gripHit.push(bodies3[b]);
+  el.addEventListener('pointerdown', (e) => { if (castHandle(e)) { fly = null; dragging = true; controls.enabled = false; el.setPointerCapture(e.pointerId); dragStart(e); dragMove(e); } });
   el.addEventListener('pointermove', (e) => { if (dragging) dragMove(e); });
-  el.addEventListener('pointerup', (e) => { dragging = false; controls.enabled = true; });
-  el.addEventListener('wheel', (e) => { e.preventDefault(); desiredPos[2] = clamp(desiredPos[2] - Math.sign(e.deltaY) * 0.028, WS.z[0], WS.z[1]); }, { passive: false });
+  const endDrag = () => { dragging = false; dragAnchor = null; controls.enabled = true; };
+  el.addEventListener('pointerup', endDrag);
+  el.addEventListener('pointercancel', endDrag);
+  el.addEventListener('dblclick', onDblClick);
+  const sens = $('sensSlider');
+  if (sens) sens.addEventListener('input', () => { sensitivity = parseFloat(sens.value); $('sensVal').textContent = Math.round(sensitivity * 100) + '%'; });
   const hold = (id, on, off) => {
     const b = $(id);
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); on(); });
@@ -565,7 +630,7 @@ function keyboardDrive(dt) {
   if (keys.has('KeyS') || keys.has('ArrowDown')) { mx -= fx; my -= fy; }
   if (keys.has('KeyD') || keys.has('ArrowRight')) { mx += rx; my += ry; }
   if (keys.has('KeyA') || keys.has('ArrowLeft')) { mx -= rx; my -= ry; }
-  const sp = (precision ? 0.13 : 0.42) * dt;
+  const sp = (precision ? 0.13 : 0.42) * sensitivity * dt;
   const ml = Math.hypot(mx, my); if (ml > 0) { desiredPos[0] += mx / ml * sp; desiredPos[1] += my / ml * sp; }
   if (keys.has('KeyR')) desiredPos[2] += sp * 0.8;
   if (keys.has('KeyF')) desiredPos[2] -= sp * 0.8;
@@ -586,7 +651,7 @@ function loop(ms) {
   if (!model) return;
   if (lastMs < 0) lastMs = ms;
   const frameDt = Math.min((ms - lastMs) / 1000, 0.06); lastMs = ms;
-  keyboardDrive(frameDt);
+  if (fly) stepFly(); else keyboardDrive(frameDt);
   // Smooth the user target (accel-limited) so commands — and data — stay clean.
   const maxSpeed = precision ? 0.14 : 0.40;
   for (let k = 0; k < 3; k++) {
