@@ -91,25 +91,35 @@ the rates in a contract and the scoring formula in this repo.
 - `contract/` — NEAR testnet policy/registry contract design and interface.
 - `tools/to_lerobot.py` — episode JSON → LeRobot dataset layout converter.
 
-## Roadmap
+## Roadmap — Season 1
 
-- [x] Playable sim, 3 tasks, recording, open quality scoring, LeRobot-style export
-- [x] NEAR testnet policy contract live: `opengrasp.opengraspdev.testnet` — rates + episode registry + points claims
-- [ ] Dataset v0 published on Hugging Face with a public dataset card
-- [ ] Episode assets (NEP-171) with licensing royalties to contributors
-- [ ] Buyer-side: dataset licensing checkout paid in NEAR, split executed by contract
-- [ ] More robots (Franka-style 7-DOF), more tasks, difficulty ladder
-- [ ] **Season 1 — a real game layer, not a reskin.** An expedition map and
-  physically distinct levels built around manipulation mechanics: rescuing a
-  fragile relic under impact/acceleration limits, rebuilding a monolith whose
-  pieces can lean or fall, handling and pouring unstable potion bottles, and
-  aligning/inserting a keystone into a gate. Stars, unlocks, and hub restoration
-  provide progression; a free-play workshop produces unstructured play that can
-  be hindsight-relabelled. The player pursues level goals and constraints, while
-  the recorder still receives robot-native state/action streams and the public
-  quality formula still decides the handling result. The research basis
-  (RoboCade's gamified teleoperation, Learning from Play) is that presentation
-  and goals may change, but the manipulation primitives must remain real.
+Shipped in the hackathon build:
+
+- [x] Playable sim: expedition hub + 3 tasks, 30 Hz recording, open quality
+  scoring, LeRobot-style export
+- [x] NEAR testnet policy contract live: `opengrasp.opengraspdev.testnet` —
+  published rates, episode registry, quality-weighted points
+- [x] Dataset v0 live on Hugging Face:
+  https://huggingface.co/datasets/arrijalufr/opengrasp-episodes-v0 — 15
+  episodes, 9,092 frames, LeRobot parquet; all 15 episodes are registered
+  on-chain (2,521 points)
+
+Season 1 adds content and activation on top of machinery that already exists —
+episode registration, quality scoring, points, and dataset versions all work
+today; none of the items below needs new infrastructure:
+
+- **A second robot arm.** A new embodiment joins the expedition, so
+  contributed data spans more than one machine.
+- **Two new expedition sites.** The Sunken Forge and The Sky Observatory —
+  already charted as locked sites on the hub map — open for verified runs.
+- **Dataset v1.** The first 100 episodes from human players replace the
+  scripted seed data of v0. They are registered and grouped into a dataset
+  version through the same contract calls the v0 seed episodes used.
+- **Dataset licensing live on NEAR mainnet.** Buyers pay in NEAR and the
+  contract executes the published split — 70% contributors / 20% treasury /
+  10% ops. The policy contract already supports dataset versions and
+  licensing claims, so this step is activation on mainnet, not new
+  infrastructure.
 
 ## Disclosure
 

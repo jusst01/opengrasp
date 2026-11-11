@@ -144,6 +144,15 @@
   .logline{font-size:12.5px;color:var(--dim);line-height:1.55;margin:4px 0}
   .logline b{color:var(--ink)}
   .logline.dim{color:rgba(157,184,201,.6)}
+  .mapsvg path.futuretrail{opacity:.14}
+  .mapnode.locked{width:216px;opacity:.55;border-style:dashed;background:rgba(10,14,20,.55);filter:grayscale(.75);padding:10px 10px 11px}
+  .mapnode.locked .nodekick{color:var(--dim)}
+  .mapnode.locked .nodebadge{border-color:var(--dim);color:var(--dim);background:rgba(255,255,255,.03);font-size:13px;width:32px;height:32px;margin-bottom:4px}
+  .mapnode.locked .nodename{color:var(--dim)}
+  .nodetag{display:inline-block;margin-top:9px;font-size:9.5px;letter-spacing:.16em;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+  .roadmap{grid-column:1/-1}
+  .roadgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px}
+  @media (max-width:900px){ .roadgrid{grid-template-columns:1fr} }
   #flash{position:fixed;inset:0;background:radial-gradient(ellipse at center,transparent 40%,rgba(255,80,60,.35));opacity:0;pointer-events:none;z-index:7;transition:opacity .12s}
   footer{position:fixed;left:12px;bottom:12px;z-index:4;font-size:10.5px;color:rgba(157,184,201,.75)}
   @media (max-width:760px){ #mission{width:200px} #hud{display:none} .sheet .howto{grid-template-columns:1fr} }
@@ -253,6 +262,14 @@
            accepted into the public training dataset; points convert and dataset revenue splits by the published
            constants in POLICY.md — nothing hidden, nothing adjusted after the fact. Practice runs are recorded
            too, clearly labelled as practice.</p></section>
+      <section class="hubpanel roadmap"><h2>🧭 Expedition roadmap — Season 1</h2>
+        <div class="roadgrid">
+          <div class="logline">🤖 <b>A second robot arm</b> — a new embodiment joins the expedition, so the dataset spans more than one machine.</div>
+          <div class="logline">🗺 <b>Two new sites</b> — The Sunken Forge and The Sky Observatory, the locked sites charted on the map above, open for verified runs.</div>
+          <div class="logline">🎞 <b>Dataset v1</b> — the first 100 episodes from human players replace the scripted seed data of v0.</div>
+          <div class="logline">🔗 <b>Licensing on mainnet</b> — dataset licensing goes live on NEAR mainnet with the same published 70/20/10 split. The policy contract already supports dataset versions, so this is activation, not new infrastructure.</div>
+        </div>
+      </section>
     </div>
     <footer class="hubfoot">OpenGrasp — transparent robot teleoperation · <a href="../">v1 Research Mode</a> · <a href="https://github.com/jusst01/opengrasp" target="_blank" rel="noopener">GitHub</a></footer>
   </div>

@@ -531,6 +531,12 @@ const RESTORE_LINES = [
   'The shrine is whole again. Dawnwater glows on the shelf. The expedition is legend.',
 ];
 const MAP_POS = [{ x: 15, y: 58 }, { x: 50, y: 30 }, { x: 85, y: 58 }]; // % positions on the expedition map
+// Season 1 sites: charted on the map, locked. Deliberately OUTSIDE LEVELS —
+// decorative only; no game logic, save data, or stat counter ever reads this.
+const FUTURE_SITES = [
+  { x: 13, y: 14.5, title: 'The Sunken Forge', kick: 'EXPEDITION 04 · THE DROWNED SMITHY', sub: 'A precision task is being charted for the drowned smithy.' },
+  { x: 87, y: 14.5, title: 'The Sky Observatory', kick: 'EXPEDITION 05 · THE TELESCOPE TOWER', sub: 'A long-reach task is being charted for the telescope tower.' },
+];
 function renderHub() {
   const restored = LEVELS.filter((_, i) => verifiedCount(i) > 0).length;
   $('hubPoints').textContent = progress.points;
@@ -555,14 +561,23 @@ function renderHub() {
       '<button class="btn ghost" data-act="practice" data-level="' + i + '">Practice</button>' +
       '</div></div>';
   }).join('');
+  const futureNodes = FUTURE_SITES.map((s) =>
+    '<div class="mapnode locked" style="left:' + s.x + '%;top:' + s.y + '%">' +
+    '<div class="nodekick">' + s.kick + '</div>' +
+    '<div class="nodebadge">🔒</div>' +
+    '<div class="nodename">' + s.title + '</div>' +
+    '<div class="nodesub">' + s.sub + '</div>' +
+    '<div class="nodetag">SEASON 1 · LOCKED</div></div>').join('');
   $('hubCards').innerHTML = '<div class="mapwrap">' +
     '<svg class="mapsvg" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true">' +
     '<path d="M500 545 C 400 480, 240 440, 150 355" />' +
     '<path d="M500 545 C 500 450, 500 290, 500 188" />' +
     '<path d="M500 545 C 600 480, 760 440, 850 355" />' +
+    '<path class="futuretrail" d="M500 545 C 430 430, 240 250, 132 92" />' +
+    '<path class="futuretrail" d="M500 545 C 570 430, 760 250, 868 92" />' +
     '</svg>' +
     '<div class="shrinepin">⛩<span>THE SUNKEN SHRINE</span></div>' +
-    nodes + '</div>';
+    nodes + futureNodes + '</div>';
 }
 function showHub() { renderHub(); $('hub').classList.remove('hidden'); }
 
