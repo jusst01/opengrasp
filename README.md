@@ -57,11 +57,38 @@ the rates in a contract and the scoring formula in this repo.
   episode-asset layer (royalty-bearing ownership of a single demonstration) is the
   next milestone.
 - **Accounts players never notice:** the game is playable end-to-end in the browser
-  with no wallet; an account only enters when points are claimed.
+  with no wallet; an account only enters when a player chooses to register
+  their verified runs on-chain (next section).
 - **Sustainability:** dataset licensing and paid data collection are the intended
   operating revenue. A protocol utility token may be evaluated after the
   hackathon for marketplace access, custom bounties, and governance; it is not
   launched or sold as part of this submission.
+
+## NEAR wallet & on-chain registration
+
+- **Connect (optional):** the Expedition Hub header has a **Connect Wallet**
+  button (NEAR Wallet Selector — Meteor Wallet or MyNearWallet, testnet).
+  The game is fully playable without ever connecting; the wallet only enters
+  when a player wants their runs on-chain. When connected, the header shows
+  the account and its on-chain points (`get_points` — a plain RPC view call,
+  no signing needed for reads).
+- **Register a verified run:** after a certified run, the result sheet offers
+  **Register on NEAR** (missed it? The site's card on the hub map offers the
+  same registration later — the run's payload is kept in the browser). The
+  player's wallet signs `register_episode(task_id, quality, content_hash)` on
+  `opengrasp.opengraspdev.testnet`, where `content_hash` is the SHA-256 of
+  the episode JSON exactly as the game exports it. Registered runs are marked
+  in the browser, so a run can't be registered twice.
+- **Contributor-owned by construction:** `register_episode` on the contract
+  is public — the *caller* is recorded as the episode's contributor and earns
+  its points (base × quality / 100, credited at quality ≥ 60). Dataset v0's
+  15 episodes were registered by the dev account, because this UI did not
+  exist yet; from this build on, players register under their own accounts,
+  and episode JSON exports carry the connected account as `contributor`.
+- **Testnet note:** everything above runs on NEAR testnet with testnet
+  accounts — no mainnet assets move. Implementation: `v2/wallet.js`, which
+  fails soft: if the wallet libraries can't load, the hub and game behave
+  exactly as they did before.
 
 ## Try it
 

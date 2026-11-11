@@ -481,6 +481,7 @@ function showIntro() { applyLevelTexts(); $('hub').classList.add('hidden'); $('i
 
 async function loadLevel(i, mode) {
   levelIdx = i; L = LEVELS[i]; runMode = mode || 'certified';
+  lastRunReg = null; runContributor = null; // per-run NEAR state resets with the run
   RELIC_START = L.propStart; VAULT = L.goal;
   $('hub').classList.add('hidden'); $('result').classList.add('hidden'); $('intro').classList.add('hidden');
   $('loading').classList.remove('hidden');
@@ -523,6 +524,144 @@ function certifyLevel(stars, points) {
   progress.points += points;
   saveProgress();
   return n;
+}
+// ------------------------------------------------- NEAR on-chain registration
+// A certified run can be registered on the policy contract by the PLAYER's
+// own wallet: register_episode(task_id, quality, content_hash) is public and
+// credits the caller as contributor (contract/src/lib.rs). The registration
+// payload — contract task id, the run's quality, and the SHA-256 of the
+// episode JSON exactly as exported — is captured the moment a run is
+// certified, so the run stays registerable from the hub even if the player
+// closes the result sheet first. All additive: opengrasp_progress is never
+// touched here, local points/stars keep working with no wallet at all, and
+// if wallet.js or its CDN libraries are absent nothing in this section ever
+// fires. Proven arg encoding: dataset-v0/register_onchain.sh (15 episodes).
+const CONTRACT_TASKS = ['pick_place', 'stack_two', 'colour_sort']; // contract task_id per level index
+const TX_EXPLORER = 'https://testnet.nearblocks.io/txns/';
+let registrations = {};
+try { registrations = JSON.parse(localStorage.getItem('opengrasp_registrations') || '{}') || {}; } catch (e) { registrations = {}; }
+let pendingRuns = {};
+try { pendingRuns = JSON.parse(localStorage.getItem('opengrasp_pending_runs') || '{}') || {}; } catch (e) { pendingRuns = {}; }
+let lastRunReg = null; // { key, level, run, task, quality, hash } for the run on the result sheet
+let runContributor = null; // NEAR account connected when the last run ended (episode provenance)
+function saveRegistrations() { try { localStorage.setItem('opengrasp_registrations', JSON.stringify(registrations)); } catch (e) { /* private mode */ } }
+function savePendingRuns() { try { localStorage.setItem('opengrasp_pending_runs', JSON.stringify(pendingRuns)); } catch (e) { /* private mode */ } }
+function regKey(level, run) { return level + ':' + run; }
+function ogw() { try { return window.OGWallet || null; } catch (e) { return null; } }
+function ogwAccount() { const w = ogw(); try { return w ? w.accountId() : null; } catch (e) { return null; } }
+function walletUsable() { const w = ogw(); if (!w) return false; try { return w.state().status !== 'unavailable'; } catch (e) { return true; } }
+function registeredCount(i) { let n = 0; for (const k in registrations) if (k.split(':')[0] === String(i)) n++; return n; }
+function pendingForLevel(i) {
+  return Object.keys(pendingRuns)
+    .filter((k) => pendingRuns[k].level === i && !registrations[k])
+    .sort().map((k) => Object.assign({ key: k }, pendingRuns[k]));
+}
+async function sha256Hex(text) {
+  try {
+    if (!window.crypto || !crypto.subtle) return null;
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) { return null; }
+}
+function captureRegistration(quality) {
+  const ep = buildEpisode();
+  sha256Hex(JSON.stringify(ep)).then((hash) => {
+    if (!hash) return; // no WebCrypto: no registration offer, the run itself is unaffected
+    const key = regKey(levelIdx, runVerifiedNo);
+    lastRunReg = { key, level: levelIdx, run: runVerifiedNo, task: CONTRACT_TASKS[levelIdx], quality, hash };
+    if (!registrations[key]) {
+      pendingRuns[key] = { level: levelIdx, run: runVerifiedNo, task: CONTRACT_TASKS[levelIdx], quality, hash, ts: Date.now() };
+      savePendingRuns();
+    }
+    updateRegUI();
+  }).catch(() => { /* registration is optional garnish; never break the result sheet */ });
+}
+async function registerRun(info) { // assumes a wallet is connected (callers ensure)
+  const w = ogw();
+  if (!w) throw new Error('Wallet support is unavailable in this browser.');
+  const res = await w.registerEpisode({ task_id: info.task, quality: info.quality, content_hash: info.hash, key: info.key });
+  registrations[info.key] = { tx: res && res.txHash ? res.txHash : null, account: ogwAccount(), quality: info.quality, hash: info.hash, ts: Date.now() };
+  delete pendingRuns[info.key];
+  saveRegistrations(); savePendingRuns();
+  return registrations[info.key];
+}
+let regBusy = false;
+function updateRegUI(noteOverride) {
+  const row = $('regRow'), btn = $('regBtn'), note = $('regNote');
+  if (!row || !btn || !note) return;
+  if (!lastRunReg || !walletUsable() || !lastRunSuccess || runMode !== 'certified') { row.classList.add('hidden'); return; }
+  row.classList.remove('hidden');
+  const reg = registrations[lastRunReg.key];
+  if (reg) {
+    btn.disabled = true; btn.textContent = '⛓ Registered on NEAR ✓';
+    note.innerHTML = 'This episode is on-chain' + (reg.account ? ' under <b>' + reg.account + '</b>' : '') +
+      (reg.tx ? ' · <a href="' + TX_EXPLORER + reg.tx + '" target="_blank" rel="noopener">view transaction</a>' : '') +
+      ' — its points live in your NEAR account now, not just this browser.';
+    return;
+  }
+  const acct = ogwAccount();
+  btn.disabled = regBusy;
+  if (regBusy) { btn.textContent = '⛓ Registering…'; note.textContent = 'Confirm the transaction in your wallet…'; return; }
+  btn.textContent = acct ? '⛓ Register on NEAR' : '⛓ Connect Wallet to Register';
+  note.textContent = noteOverride || (acct
+    ? 'Quality ' + lastRunReg.quality + ' — this episode will be registered under ' + acct + '; the contract credits its points to your account.'
+    : 'Optional: connect a NEAR testnet wallet to register this episode on-chain under your own account and earn its points there too.');
+}
+async function onRegisterClick() {
+  if (regBusy || !lastRunReg) return;
+  const w = ogw(); if (!w) return;
+  if (!ogwAccount()) { w.connect(); updateRegUI('Connect your wallet, then press Register again — this run stays saved here and on the hub.'); return; }
+  regBusy = true; updateRegUI();
+  try {
+    await registerRun(lastRunReg);
+    toast('⛓ Registered on NEAR ✓');
+  } catch (e) {
+    updateRegUI('Registration did not complete — the wallet declined or the network hiccuped. The run itself is safe; you can retry anytime.');
+  }
+  regBusy = false; updateRegUI();
+}
+async function onHubRegister(i) {
+  const pend = pendingForLevel(i);
+  if (!pend.length) return;
+  const w = ogw();
+  if (!w) { toast('Wallet unavailable here — the run stays saved.'); return; }
+  if (!ogwAccount()) { w.connect(); toast('Connect your wallet, then press Register again.'); return; }
+  const info = pend[0];
+  toast('⛓ Registering run ' + info.run + ' — confirm in your wallet…');
+  try {
+    await registerRun(info);
+    toast('⛓ Run ' + info.run + ' registered on NEAR ✓');
+  } catch (e) {
+    toast('Registration did not complete — the run is safe; retry anytime.');
+  }
+  renderHub();
+}
+function finalizeRedirectRegistration() {
+  const w = ogw();
+  if (!w || !w.redirectResult) return;
+  let r = null;
+  try { r = w.redirectResult(); } catch (e) { return; }
+  if (!r || !r.key) return;
+  if (r.txHash && pendingRuns[r.key] && !registrations[r.key]) {
+    const p = pendingRuns[r.key];
+    registrations[r.key] = { tx: r.txHash, account: ogwAccount(), quality: p.quality, hash: p.hash, ts: Date.now() };
+    delete pendingRuns[r.key];
+    saveRegistrations(); savePendingRuns();
+    if (lastRunReg && lastRunReg.key === r.key) updateRegUI();
+    toast('⛓ Run registered on NEAR ✓');
+  } else if (r.error) {
+    toast('NEAR registration was not completed — the run stays ready on the hub.');
+  }
+}
+let walletGlueDone = false;
+function walletGlueInit() {
+  finalizeRedirectRegistration();
+  if (walletGlueDone) return;
+  walletGlueDone = true;
+  const w = ogw();
+  if (!w) return;
+  try { w.onChange(() => { updateRegUI(); }); } catch (e) { /* ignore */ }
+  try { w.init(); } catch (e) { /* wallet is optional */ }
 }
 const RESTORE_LINES = [
   'The shrine sleeps in ruin. Three tasks await.',
@@ -580,6 +719,7 @@ function renderHub() {
   const nodes = LEVELS.map((lv, i) => {
     const n = verifiedCount(i), st = progress.stars[i], complete = siteComplete(i);
     const pips = Array.from({ length: MAX_VERIFIED }, (_, k) => '<i class="' + (k < n ? 'on' : '') + '"></i>').join('');
+    const regN = registeredCount(i), pend = walletUsable() ? pendingForLevel(i) : [];
     return '<div class="mapnode' + (complete ? ' complete' : '') + '" style="left:' + MAP_POS[i].x + '%;top:' + MAP_POS[i].y + '%">' +
       '<div class="nodekick">' + lv.kick + '</div>' +
       '<div class="nodebadge">' + lv.no + '</div>' +
@@ -587,10 +727,12 @@ function renderHub() {
       '<div class="nodesub">' + lv.sub + '</div>' +
       '<div class="nodestars">' + (st != null ? '★'.repeat(st) + '☆'.repeat(3 - st) : '☆☆☆') + '</div>' +
       '<div class="pips">' + pips + '</div>' +
-      '<div class="nodestatus">' + (complete ? 'SITE COMPLETE ✓' : 'OPEN · ' + n + '/' + MAX_VERIFIED + ' verified') + '</div>' +
+      '<div class="nodestatus">' + (complete ? 'SITE COMPLETE ✓' : 'OPEN · ' + n + '/' + MAX_VERIFIED + ' verified') + (regN ? ' · ⛓ ' + regN + ' ON-CHAIN' : '') + '</div>' +
       '<div class="nodebtns">' +
       (complete ? '' : '<button class="btn" data-act="play" data-level="' + i + '">' + (n === 0 ? 'Begin Certified Run' : 'Verified Run ' + (n + 1) + ' of ' + MAX_VERIFIED) + '</button>') +
       '<button class="btn ghost" data-act="practice" data-level="' + i + '">Practice</button>' +
+      (pend.length ? '<button class="btn regbtn" data-act="register" data-level="' + i + '">⛓ Register Run ' + pend[0].run + ' on NEAR</button>' +
+        (pend.length > 1 ? '<div class="nodereg">+ ' + (pend.length - 1) + ' MORE RUN' + (pend.length > 2 ? 'S' : '') + ' READY TO REGISTER</div>' : '') : '') +
       '</div></div>';
   }).join('');
   const futureNodes = FUTURE_SITES.map((s) =>
@@ -604,7 +746,7 @@ function renderHub() {
     '<div class="shrinepin">⛩<span>THE SUNKEN SHRINE</span></div>' +
     nodes + futureNodes + '</div>';
 }
-function showHub() { renderHub(); $('hub').classList.remove('hidden'); }
+function showHub() { walletGlueInit(); renderHub(); $('hub').classList.remove('hidden'); }
 
 function startPlay() {
   resetWorld();
@@ -617,6 +759,11 @@ function startPlay() {
 
 function endPlay(success, note) {
   phase = 'done';
+  lastRunReg = null;
+  // Episode provenance: who was connected when this run ended. typeof-guarded:
+  // the wallet glue lives outside the game core (and outside the playthrough
+  // harness's extraction of it) — absent helpers must mean "no wallet", never a crash.
+  runContributor = (typeof ogwAccount === 'function') ? ogwAccount() : null;
   let quality = 0, points = 0, stars = 0;
   if (success) {
     const meanJerk = jerkN ? jerkSum / jerkN : 0;
@@ -628,7 +775,7 @@ function endPlay(success, note) {
     stars = quality >= 85 ? 3 : quality >= 70 ? 2 : 1;
     points = Math.round(L.base * quality / 100);
     events.push({ t: playTime, type: 'expedition_complete', quality, points, meanJerk: +meanJerk.toFixed(2), mode: runMode });
-    if (runMode === 'certified') runVerifiedNo = certifyLevel(stars, points);
+    if (runMode === 'certified') { runVerifiedNo = certifyLevel(stars, points); if (typeof captureRegistration === 'function') captureRegistration(quality); }
     beep(523, 0.12, 0.05); setTimeout(() => beep(784, 0.16, 0.05), 130);
   } else {
     events.push({ t: playTime, type: 'expedition_failed', reason: note });
@@ -653,6 +800,7 @@ function endPlay(success, note) {
   lastRunSuccess = success;
   $('result').classList.remove('hidden');
   refreshSteps();
+  if (typeof updateRegUI === 'function') updateRegUI();
 }
 
 function gameStep(dt) {
@@ -739,9 +887,9 @@ function gameStep(dt) {
   refreshSteps();
 }
 
-function downloadLog() {
+function buildEpisode() {
   const meanJerk = jerkN ? jerkSum / jerkN : 0;
-  const payload = {
+  return {
     format: 'opengrasp-episode', version: 2, task: L.task, level: levelIdx + 1, mode: runMode, certified: runMode === 'certified',
     verified_run: runVerifiedNo, max_verified: MAX_VERIFIED, prop_jitter: runJitter,
     embodiment: 'franka_emika_panda_mujoco_menagerie', dof: 7, gripper: 'parallel_2f',
@@ -750,7 +898,12 @@ function downloadLog() {
     par_seconds: L.par, base_points: L.base,
     result: { phase, integrity: Math.round(integrity), final_tilt_deg: +(finalTilt * 57.2958).toFixed(1), duration: +playTime.toFixed(2), mean_ee_jerk: +meanJerk.toFixed(2) },
     events, frames,
+    contributor: runContributor, // NEAR account connected when the run ended, else null
   };
+}
+
+function downloadLog() {
+  const payload = buildEpisode();
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -874,12 +1027,14 @@ function bindInput() {
     const i = +b.dataset.level;
     if (b.dataset.act === 'play') loadLevel(i, 'certified');
     else if (b.dataset.act === 'practice') loadLevel(i, 'practice');
+    else if (b.dataset.act === 'register') onHubRegister(i);
   });
   $('againBtn').onclick = () => { $('result').classList.add('hidden'); if (lastRunSuccess) showHub(); else startPlay(); };
   $('hubBtn').onclick = () => { $('result').classList.add('hidden'); showHub(); };
   $('introHubBtn').onclick = () => { $('intro').classList.add('hidden'); showHub(); };
   $('hubBtnTop').onclick = () => { if (phase !== 'playing') showHub(); };
   $('dlBtn').onclick = downloadLog;
+  $('regBtn').onclick = () => { onRegisterClick(); };
 }
 
 function keyboardDrive(dt) {
@@ -960,7 +1115,7 @@ function loop(ms) {
     resetWorld();
     phase = 'attract';
     setProgress(1, 'Ready.');
-    setTimeout(() => { $('loading').classList.add('hidden'); renderHub(); $('hub').classList.remove('hidden'); }, 350);
+    setTimeout(() => { $('loading').classList.add('hidden'); showHub(); }, 350);
     requestAnimationFrame(loop);
   } catch (err) {
     console.error(err);
